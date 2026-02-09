@@ -27,6 +27,8 @@ model Doc {
 
   members   DocMember[]
   state     DocState?
+  snapshots DocSnapshot[]
+  events    DocEvent[]
 }
 
 model DocMember {
@@ -47,6 +49,30 @@ model DocState {
   // store Yjs state as raw bytes
   state     Bytes
   updatedAt DateTime @updatedAt
+}
+
+model DocSnapshot {
+  id        String   @id @default(uuid())
+  docId     String
+  doc       Doc      @relation(fields: [docId], references: [id], onDelete: Cascade)
+  state     Bytes
+  createdAt DateTime @default(now())
+
+  @@index([docId, createdAt])
+}
+
+model DocEvent {
+  id        String   @id @default(uuid())
+  docId     String
+  userId    String
+  type      String   // "WS_CONNECT", "UPDATE", "RESTORE", etc.
+  bytes     Int?
+  createdAt DateTime @default(now())
+
+  doc       Doc      @relation(fields: [docId], references: [id], onDelete: Cascade)
+
+  @@index([docId, createdAt])
+  @@index([userId, createdAt])
 }
 
 enum Role {

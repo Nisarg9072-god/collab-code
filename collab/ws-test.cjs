@@ -15,13 +15,28 @@ ydoc.on("update", (u) => console.log("local update bytes:", u.length));
 
 ws.on("open", () => {
   console.log("WS OPEN");
+  
   // after initial sync, modify doc
   setTimeout(() => {
     const ytext = ydoc.getText("monaco");
     ytext.insert(0, "hello-from-ws-test\n");
+    
+    // In a real Yjs client, we send the update vector, not the whole state usually, 
+    // but here for simplicity we encode state as update. 
+    // Wait, if we encode state as update, it includes everything.
+    // Ideally we should capture the update from ydoc.on('update', ...)
+    // But this test script manually sends encoded state.
     const upd = Y.encodeStateAsUpdate(ydoc);
     ws.send(Buffer.from(upd));
     console.log("sent update bytes:", upd.length);
+
+    // Close after a short delay to allow server to process
+    setTimeout(() => {
+        console.log("Test finished, closing...");
+        ws.close();
+        process.exit(0);
+    }, 1000);
+
   }, 700);
 });
 
