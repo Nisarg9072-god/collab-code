@@ -1,0 +1,56 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  passHash  String
+  createdAt DateTime @default(now())
+
+  docsOwned Doc[]    @relation("DocOwner")
+  members   DocMember[]
+}
+
+model Doc {
+  id        String   @id @default(uuid())
+  title     String
+  ownerId   String
+  owner     User     @relation("DocOwner", fields: [ownerId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  members   DocMember[]
+  state     DocState?
+}
+
+model DocMember {
+  id     String @id @default(uuid())
+  docId  String
+  userId String
+  role   Role   @default(EDITOR)
+
+  doc    Doc    @relation(fields: [docId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([docId, userId])
+}
+
+model DocState {
+  docId     String @id
+  doc       Doc    @relation(fields: [docId], references: [id], onDelete: Cascade)
+  // store Yjs state as raw bytes
+  state     Bytes
+  updatedAt DateTime @updatedAt
+}
+
+enum Role {
+  OWNER
+  EDITOR
+  VIEWER
+}

@@ -1,0 +1,16 @@
+{
+  "name": "collab-code-server",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "set HOST=0.0.0.0 && set PORT=1234 && node index.js",
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "@y/websocket-server": "^0.1.1",
+    "express": "^5.2.1",
+    "ws": "^8.19.0",
+    "y-websocket": "^3.0.0"
+  },
+  "type": "module"
+}
