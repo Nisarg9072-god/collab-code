@@ -15,6 +15,44 @@ model User {
 
   docsOwned Doc[]    @relation("DocOwner")
   members   DocMember[]
+
+  workspaceMembers WorkspaceMember[]
+  ownedWorkspaces  Workspace[]
+}
+
+model Workspace {
+  id        String   @id @default(uuid())
+  name      String
+  ownerId   String
+  owner     User     @relation(fields: [ownerId], references: [id])
+  createdAt DateTime @default(now())
+
+  members   WorkspaceMember[]
+  files     ProjectFile[]
+}
+
+model ProjectFile {
+  id          String   @id @default(uuid())
+  workspaceId String
+  name        String
+  content     String   @db.Text
+  language    String   @default("plaintext")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+}
+
+model WorkspaceMember {
+  id          String   @id @default(uuid())
+  workspaceId String
+  userId      String
+  role        Role     @default(EDITOR)
+
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, userId])
 }
 
 model Doc {
@@ -77,6 +115,8 @@ model DocEvent {
 
 enum Role {
   OWNER
+  ADMIN
+  MEMBER
   EDITOR
   VIEWER
 }

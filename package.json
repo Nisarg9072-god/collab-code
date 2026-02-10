@@ -1,0 +1,9 @@
+{
+  "dependencies": {
+    "@monaco-editor/react": "^4.7.0",
+    "axios": "^1.13.5",
+    "jwt-decode": "^4.0.0",
+    "monaco-editor": "^0.55.1",
+    "y-monaco": "^0.1.6"
+  }
+}

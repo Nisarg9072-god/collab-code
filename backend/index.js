@@ -8,8 +8,41 @@ import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import pinoHttp from "pino-http";
 
+/**
+ * @swagger
+ * tags:
+ *   - name: Auth
+ *     description: Authentication and user identity
+ *   - name: Documents
+ *     description: Document lifecycle and access control
+ *   - name: History
+ *     description: Snapshots and audit logs
+ */
+
 const app = express();
-const prisma = new PrismaClient();
+const prisma = new PrismaClient({
+  datasources: {
+    db: {
+      url: process.env.DATABASE_URL,
+    },
+  },
+  // Log queries in dev, error/warn in prod
+  log: process.env.NODE_ENV === "development" ? ["query", "error", "warn"] : ["error"],
+});
+
+// Test DB connection on startup
+prisma.$connect()
+  .then(() => console.log("✅ Database connected successfully"))
+  .catch((err) => {
+    console.error("❌ Database connection failed:", err.message);
+    // Don't exit process, just log it. The app might recover if DB comes up.
+  });
+
+// SSL fix for Render/Production
+if (process.env.DATABASE_URL && process.env.DATABASE_URL.includes("sslmode")) {
+   console.log("Database SSL mode detected in URL");
+}
+
 const PORT = process.env.PORT || 3001;
 const JWT_SECRET = process.env.JWT_SECRET || "supersecret";
 
@@ -59,34 +92,94 @@ const createDocSchema = z.object({
 // Routes
 
 // Register
-app.post("/register", async (req, res, next) => {
+/**
+ * @swagger
+ * /api/auth/register:
+ *   post:
+ *     tags: [Auth]
+ *     summary: Register a new user
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [email, password]
+ *             properties:
+ *               email:
+ *                 type: string
+ *               password:
+ *                 type: string
+ *               name:
+ *                 type: string
+ *     responses:
+ *       201:
+ *         description: User registered successfully
+ */
+app.post("/api/auth/register", async (req, res, next) => {
   try {
     const { email, password } = registerSchema.parse(req.body);
+    
+    // Check if user exists
+    const existing = await prisma.user.findUnique({ where: { email } });
+    if (existing) {
+      console.error(`[Auth Error] Email already exists: ${email}`);
+      return res.status(409).json({ error: "Email already exists" });
+    }
+
     const hashedPassword = await bcrypt.hash(password, 10);
     
     const user = await prisma.user.create({
       data: { email, passHash: hashedPassword },
     });
     
-    res.json({ id: user.id, email: user.email });
+    console.log(`[Auth] User registered: ${user.id}`);
+    
+    // Auto login after register
+    const token = jwt.sign({ sub: user.id, email: user.email }, JWT_SECRET, { expiresIn: "1h" });
+    
+    res.status(201).json({ 
+      token,
+      user: { id: user.id, email: user.email }
+    });
   } catch (err) {
-    next(err);
+    console.error("[Auth Error] Register failed:", err);
+    if (err.code === 'P1001' || err.message.includes('Can\'t reach database')) {
+      return res.status(503).json({ error: "Database connection failed. Please check if PostgreSQL is running." });
+    }
+    res.status(500).json({ error: "server error" });
   }
 });
 
 // Login
-app.post("/login", async (req, res, next) => {
+app.post("/api/auth/login", async (req, res, next) => {
   try {
     const { email, password } = loginSchema.parse(req.body);
     const user = await prisma.user.findUnique({ where: { email } });
     
-    if (!user || !(await bcrypt.compare(password, user.passHash))) {
-      return res.status(401).json({ error: "invalid credentials" });
+    if (!user) {
+      console.error(`[Auth Error] User not found: ${email}`);
+      return res.status(401).json({ error: "Invalid credentials" });
+    }
+
+    const validPassword = await bcrypt.compare(password, user.passHash);
+    if (!validPassword) {
+      console.error(`[Auth Error] Invalid password for: ${email}`);
+      return res.status(401).json({ error: "Invalid credentials" });
     }
     
     const token = jwt.sign({ sub: user.id, email: user.email }, JWT_SECRET, { expiresIn: "1h" });
-    res.json({ token });
+    console.log(`[Auth] User logged in: ${user.id}`);
+    
+    res.json({ 
+      token,
+      user: { id: user.id, email: user.email }
+    });
   } catch (err) {
+    console.error("[Auth Error] Login failed:", err);
+    if (err.code === 'P1001' || err.message.includes('Can\'t reach database')) {
+      return res.status(503).json({ error: "Database connection failed. Please check if PostgreSQL is running." });
+    }
     next(err);
   }
 });
@@ -114,6 +207,18 @@ app.post("/docs", auth, async (req, res, next) => {
 });
 
 // List Docs
+/**
+ * @swagger
+ * /docs:
+ *   get:
+ *     tags: [Documents]
+ *     summary: List accessible documents
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Document list
+ */
 app.get("/docs", auth, async (req, res, next) => {
   try {
     const docs = await prisma.doc.findMany({
@@ -206,6 +311,24 @@ app.post("/docs/:docId/snapshots/:snapshotId/restore", auth, async (req, res, ne
 });
 
 // List Snapshots
+/**
+ * @swagger
+ * /docs/{docId}/snapshots:
+ *   get:
+ *     tags: [History]
+ *     summary: List document snapshots
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: docId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Snapshot list
+ */
 app.get("/docs/:docId/snapshots", auth, async (req, res, next) => {
   try {
     const { docId } = req.params;
@@ -229,6 +352,24 @@ app.get("/docs/:docId/snapshots", auth, async (req, res, next) => {
 });
 
 // Audit Logs
+/**
+ * @swagger
+ * /docs/{docId}/audit:
+ *   get:
+ *     tags: [History]
+ *     summary: View audit log
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: docId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Audit log
+ */
 app.get("/docs/:docId/audit", auth, async (req, res, next) => {
   try {
     const { docId } = req.params;
@@ -245,6 +386,506 @@ app.get("/docs/:docId/audit", auth, async (req, res, next) => {
     });
 
     res.json(events);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Auth Me
+/**
+ * @swagger
+ * /api/auth/me:
+ *   get:
+ *     tags: [Auth]
+ *     summary: Get current user
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Current user info
+ */
+app.get("/api/auth/me", auth, async (req, res, next) => {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: req.user.sub },
+      select: { id: true, email: true, createdAt: true },
+    });
+    res.json(user);
+  } catch (err) {
+    next(err);
+  }
+});
+
+const activeUsers = new Map(); // workspaceId -> Set<userId>
+
+// Presence Endpoints
+app.post("/api/workspaces/:id/presence/enter", auth, (req, res) => {
+    const { id } = req.params;
+    if (!activeUsers.has(id)) {
+        activeUsers.set(id, new Set());
+    }
+    activeUsers.get(id).add(req.user.sub);
+    res.json({ success: true, activeCount: activeUsers.get(id).size });
+});
+
+app.post("/api/workspaces/:id/presence/leave", auth, (req, res) => {
+    const { id } = req.params;
+    if (activeUsers.has(id)) {
+        activeUsers.get(id).delete(req.user.sub);
+    }
+    res.json({ success: true });
+});
+
+app.get("/api/workspaces/:id/presence", auth, (req, res) => {
+    const { id } = req.params;
+    const users = activeUsers.has(id) ? Array.from(activeUsers.get(id)) : [];
+    res.json({ activeUsers: users });
+});
+
+// Create Workspace
+app.post("/api/workspaces", auth, async (req, res, next) => {
+  try {
+    const { name } = req.body;
+    if (!name) return res.status(400).json({ error: "Name is required" });
+
+    const workspace = await prisma.workspace.create({
+      data: {
+        name,
+        ownerId: req.user.sub,
+        members: {
+          create: {
+            userId: req.user.sub,
+            role: "OWNER",
+          },
+        },
+      },
+      include: {
+        members: true,
+      }
+    });
+
+    res.json(workspace);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Get User Workspaces
+app.get("/api/workspaces", auth, async (req, res, next) => {
+  try {
+    const workspaces = await prisma.workspace.findMany({
+      where: {
+        members: {
+          some: {
+            userId: req.user.sub,
+          },
+        },
+      },
+      include: {
+        owner: {
+          select: { email: true },
+        },
+        members: true,
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    res.json(workspaces);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Invite to Workspace
+app.post("/api/workspaces/:id/invite", auth, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { email } = req.body;
+    
+    if (!email) return res.status(400).json({ error: "Email is required" });
+
+    // Verify ownership/admin rights
+    const member = await prisma.workspaceMember.findUnique({
+      where: {
+        workspaceId_userId: {
+            workspaceId: id,
+            userId: req.user.sub
+        }
+      }
+    });
+
+    if (!member || member.role !== 'OWNER') {
+        return res.status(403).json({ error: "Only owners can invite members" });
+    }
+
+    // Find user to invite
+    const userToInvite = await prisma.user.findUnique({ where: { email } });
+    if (!userToInvite) {
+        return res.status(404).json({ error: "User not found" });
+    }
+
+    // Check if already a member
+    const existingMember = await prisma.workspaceMember.findUnique({
+        where: {
+            workspaceId_userId: {
+                workspaceId: id,
+                userId: userToInvite.id
+            }
+        }
+    });
+
+    if (existingMember) {
+        return res.status(409).json({ error: "User is already a member" });
+    }
+
+    // Create membership
+    await prisma.workspaceMember.create({
+        data: {
+            workspaceId: id,
+            userId: userToInvite.id,
+            role: "EDITOR"
+        }
+    });
+
+    const inviteLink = `${req.protocol}://${req.get('host').replace('3001', '5173')}/workspace/${id}`;
+
+    res.json({ message: "User added to workspace", link: inviteLink });
+
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Get Workspace Details
+app.get("/api/workspaces/:id", auth, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    const workspace = await prisma.workspace.findUnique({
+      where: { id },
+      include: {
+        owner: { select: { id: true, email: true } },
+        members: {
+          include: {
+            user: { select: { id: true, email: true } }
+          }
+        }
+      }
+    });
+
+    if (!workspace) return res.status(404).json({ error: "Workspace not found" });
+
+    // Check access
+    const isMember = workspace.members.some(m => m.userId === req.user.sub);
+    if (!isMember) return res.status(403).json({ error: "Access denied" });
+
+    res.json(workspace);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Get Workspace Members
+app.get("/api/workspaces/:id/members", auth, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    // Check access first
+    const member = await prisma.workspaceMember.findUnique({
+      where: { workspaceId_userId: { workspaceId: id, userId: req.user.sub } }
+    });
+    if (!member) return res.status(403).json({ error: "Access denied" });
+
+    const members = await prisma.workspaceMember.findMany({
+      where: { workspaceId: id },
+      include: {
+        user: { select: { id: true, email: true, createdAt: true } }
+      }
+    });
+
+    res.json(members);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Update Member Role
+app.patch("/api/workspaces/:id/members/:userId", auth, async (req, res, next) => {
+  try {
+    const { id, userId } = req.params;
+    const { role } = req.body;
+
+    if (!['OWNER', 'ADMIN', 'MEMBER'].includes(role)) {
+        return res.status(400).json({ error: "Invalid role" });
+    }
+
+    // Verify requester is OWNER
+    const requester = await prisma.workspaceMember.findUnique({
+      where: { workspaceId_userId: { workspaceId: id, userId: req.user.sub } }
+    });
+
+    if (!requester || requester.role !== 'OWNER') {
+        return res.status(403).json({ error: "Only owners can change roles" });
+    }
+
+    // Prevent removing the last owner (if demoting)
+    if (role !== 'OWNER') {
+        const targetMember = await prisma.workspaceMember.findUnique({
+            where: { workspaceId_userId: { workspaceId: id, userId } }
+        });
+        if (targetMember?.role === 'OWNER') {
+             const ownerCount = await prisma.workspaceMember.count({
+                where: { workspaceId: id, role: 'OWNER' }
+            });
+            if (ownerCount <= 1) {
+                return res.status(400).json({ error: "Cannot demote the last owner" });
+            }
+        }
+    }
+
+    const updated = await prisma.workspaceMember.update({
+      where: { workspaceId_userId: { workspaceId: id, userId } },
+      data: { role },
+      include: { user: { select: { id: true, email: true } } }
+    });
+
+    res.json(updated);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Remove Member
+app.delete("/api/workspaces/:id/members/:userId", auth, async (req, res, next) => {
+  try {
+    const { id, userId } = req.params;
+
+    // Verify requester is OWNER
+    const requester = await prisma.workspaceMember.findUnique({
+      where: { workspaceId_userId: { workspaceId: id, userId: req.user.sub } }
+    });
+
+    if (!requester || requester.role !== 'OWNER') {
+        return res.status(403).json({ error: "Only owners can remove members" });
+    }
+
+    // Cannot remove self (must leave or delete workspace)
+    if (userId === req.user.sub) {
+        return res.status(400).json({ error: "Cannot remove yourself. Leave the workspace instead." });
+    }
+
+    await prisma.workspaceMember.delete({
+      where: { workspaceId_userId: { workspaceId: id, userId } }
+    });
+
+    res.json({ message: "Member removed" });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Delete Workspace
+app.delete("/api/workspaces/:id", auth, async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        
+        // Verify ownership
+        const requester = await prisma.workspaceMember.findUnique({
+            where: { workspaceId_userId: { workspaceId: id, userId: req.user.sub } }
+        });
+
+        if (!requester || requester.role !== 'OWNER') {
+            return res.status(403).json({ error: "Only owners can delete workspaces" });
+        }
+
+        await prisma.workspace.delete({ where: { id } });
+        res.json({ message: "Workspace deleted" });
+    } catch (err) {
+        next(err);
+    }
+});
+
+// Join Workspace (by ID or Link logic - mostly ID here)
+app.post("/api/workspaces/join", auth, async (req, res, next) => {
+    try {
+        const { workspaceId } = req.body;
+        if (!workspaceId) return res.status(400).json({ error: "Workspace ID is required" });
+
+        // Check if workspace exists
+        const workspace = await prisma.workspace.findUnique({ where: { id: workspaceId } });
+        if (!workspace) return res.status(404).json({ error: "Workspace not found" });
+
+        // Check if already member
+        const existing = await prisma.workspaceMember.findUnique({
+            where: { workspaceId_userId: { workspaceId, userId: req.user.sub } }
+        });
+
+        if (existing) return res.json({ message: "Already a member", workspaceId });
+
+        // Add as MEMBER
+        await prisma.workspaceMember.create({
+            data: {
+                workspaceId,
+                userId: req.user.sub,
+                role: "MEMBER"
+            }
+        });
+
+        res.json({ message: "Joined workspace", workspaceId });
+    } catch (err) {
+        next(err);
+    }
+});
+
+
+
+
+
+// --- File APIs ---
+
+// List Files
+app.get("/api/workspaces/:id/files", auth, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    // Check access
+    const member = await prisma.workspaceMember.findUnique({
+      where: { workspaceId_userId: { workspaceId: id, userId: req.user.sub } }
+    });
+    if (!member) return res.status(403).json({ error: "Access denied" });
+
+    const files = await prisma.projectFile.findMany({
+      where: { workspaceId: id },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true, language: true, updatedAt: true } // Don't fetch content list for performance
+    });
+    res.json(files);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Create File
+app.post("/api/workspaces/:id/files", auth, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { name, content, language } = req.body;
+
+    if (!name) return res.status(400).json({ error: "Filename is required" });
+
+    // Check access (Editor+)
+    const member = await prisma.workspaceMember.findUnique({
+      where: { workspaceId_userId: { workspaceId: id, userId: req.user.sub } }
+    });
+    if (!member || ['VIEWER'].includes(member.role)) {
+      return res.status(403).json({ error: "Write access denied" });
+    }
+
+    const file = await prisma.projectFile.create({
+      data: {
+        workspaceId: id,
+        name,
+        content: content || "",
+        language: language || "plaintext"
+      }
+    });
+    res.json(file);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Get File Content
+app.get("/api/files/:id", auth, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const file = await prisma.projectFile.findUnique({
+      where: { id },
+      include: { workspace: true }
+    });
+    if (!file) return res.status(404).json({ error: "File not found" });
+
+    // Check access via workspace
+    const member = await prisma.workspaceMember.findUnique({
+      where: { workspaceId_userId: { workspaceId: file.workspaceId, userId: req.user.sub } }
+    });
+    if (!member) return res.status(403).json({ error: "Access denied" });
+
+    res.json(file);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Update File
+app.put("/api/files/:id", auth, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { content, name } = req.body;
+
+    const file = await prisma.projectFile.findUnique({ where: { id } });
+    if (!file) return res.status(404).json({ error: "File not found" });
+
+    // Check access
+    const member = await prisma.workspaceMember.findUnique({
+      where: { workspaceId_userId: { workspaceId: file.workspaceId, userId: req.user.sub } }
+    });
+    if (!member || ['VIEWER'].includes(member.role)) {
+      return res.status(403).json({ error: "Write access denied" });
+    }
+
+    const updated = await prisma.projectFile.update({
+      where: { id },
+      data: {
+        content: content !== undefined ? content : undefined,
+        name: name !== undefined ? name : undefined,
+      }
+    });
+    res.json(updated);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Delete File
+app.delete("/api/files/:id", auth, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const file = await prisma.projectFile.findUnique({ where: { id } });
+    if (!file) return res.status(404).json({ error: "File not found" });
+
+    // Check access (Owner/Admin only)
+    const member = await prisma.workspaceMember.findUnique({
+      where: { workspaceId_userId: { workspaceId: file.workspaceId, userId: req.user.sub } }
+    });
+    
+    if (!member || !['OWNER', 'ADMIN'].includes(member.role)) {
+        return res.status(403).json({ error: "Only admins can delete files" });
+    }
+
+    await prisma.projectFile.delete({ where: { id } });
+    res.json({ message: "File deleted" });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Join Doc
+app.post("/docs/:docId/join", auth, async (req, res, next) => {
+  try {
+    const { docId } = req.params;
+    
+    const doc = await prisma.doc.findUnique({ where: { id: docId } });
+    if (!doc) return res.status(404).json({ error: "workspace not found" });
+
+    const member = await prisma.docMember.create({
+      data: {
+        docId,
+        userId: req.user.sub,
+        role: "VIEWER",
+      },
+    });
+    
+    res.json(member);
   } catch (err) {
     next(err);
   }

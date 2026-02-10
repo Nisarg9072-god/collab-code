@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "set HOST=0.0.0.0 && set PORT=1234 && node index.js",
+    "dev": "set HOST=0.0.0.0&& set PORT=1234&& node index.js",
     "start": "node index.js"
   },
   "dependencies": {

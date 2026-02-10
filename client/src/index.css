@@ -1,0 +1,107 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 220 16% 96%;
+    --foreground: 220 14% 10%;
+    --card: 220 14% 94%;
+    --card-foreground: 220 14% 10%;
+    --popover: 220 14% 94%;
+    --popover-foreground: 220 14% 10%;
+    --primary: 174 62% 47%;
+    --primary-foreground: 220 20% 6%;
+    --secondary: 220 12% 88%;
+    --secondary-foreground: 220 14% 20%;
+    --muted: 220 10% 90%;
+    --muted-foreground: 220 8% 50%;
+    --accent: 174 62% 47%;
+    --accent-foreground: 220 20% 6%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 220 12% 86%;
+    --input: 220 12% 86%;
+    --ring: 174 62% 47%;
+    --radius: 0.5rem;
+    --sidebar-background: 220 14% 94%;
+    --sidebar-foreground: 220 8% 30%;
+    --sidebar-primary: 174 62% 47%;
+    --sidebar-primary-foreground: 220 20% 6%;
+    --sidebar-accent: 220 10% 90%;
+    --sidebar-accent-foreground: 220 14% 10%;
+    --sidebar-border: 220 12% 86%;
+    --sidebar-ring: 174 62% 47%;
+  }
+
+  .dark {
+    --background: 220 20% 7%;
+    --foreground: 220 10% 90%;
+    --card: 220 18% 10%;
+    --card-foreground: 220 10% 90%;
+    --popover: 220 18% 12%;
+    --popover-foreground: 220 10% 90%;
+    --primary: 174 62% 47%;
+    --primary-foreground: 220 20% 6%;
+    --secondary: 220 16% 16%;
+    --secondary-foreground: 220 10% 80%;
+    --muted: 220 14% 14%;
+    --muted-foreground: 220 8% 55%;
+    --accent: 174 62% 47%;
+    --accent-foreground: 220 20% 6%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 220 14% 18%;
+    --input: 220 14% 18%;
+    --ring: 174 62% 47%;
+    --sidebar-background: 220 20% 9%;
+    --sidebar-foreground: 220 8% 65%;
+    --sidebar-primary: 174 62% 47%;
+    --sidebar-primary-foreground: 220 20% 6%;
+    --sidebar-accent: 220 14% 14%;
+    --sidebar-accent-foreground: 220 10% 90%;
+    --sidebar-border: 220 14% 14%;
+    --sidebar-ring: 174 62% 47%;
+
+    /* Editor-specific tokens */
+    --editor-bg: 220 20% 9%;
+    --editor-gutter: 220 14% 14%;
+    --editor-line-number: 220 8% 40%;
+    --editor-line-active: 220 16% 12%;
+    --editor-selection: 174 40% 20%;
+    --editor-cursor-1: 174 62% 47%;
+    --editor-cursor-2: 35 90% 55%;
+    --editor-cursor-3: 280 60% 60%;
+
+    /* Syntax highlighting */
+    --syntax-keyword: 210 70% 70%;
+    --syntax-string: 130 50% 60%;
+    --syntax-comment: 220 8% 42%;
+    --syntax-function: 45 80% 70%;
+    --syntax-number: 30 80% 65%;
+    --syntax-type: 174 55% 60%;
+    --syntax-operator: 220 10% 75%;
+    --syntax-variable: 220 10% 85%;
+
+    /* Status colors */
+    --status-online: 145 60% 50%;
+    --status-idle: 40 80% 55%;
+    --status-offline: 0 60% 50%;
+    --status-reconnecting: 40 80% 55%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground dark;
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+  code, .font-mono {
+    font-family: 'JetBrains Mono', monospace;
+  }
+}
