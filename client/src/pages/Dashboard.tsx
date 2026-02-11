@@ -4,9 +4,9 @@ import { api } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { Plus, Users, ArrowRight, Loader2, Copy, Check, LayoutGrid, Settings, LogOut, Clock, Link as LinkIcon, DoorOpen } from "lucide-react";
+import { Plus, Users, ArrowRight, Loader2, LayoutGrid, LogOut, Clock, DoorOpen, Search, Bell, Command, Star } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
@@ -35,10 +35,8 @@ export default function Dashboard() {
   const [joinWorkspaceId, setJoinWorkspaceId] = useState("");
   const [joining, setJoining] = useState(false);
 
-  // Invite Modal State
-  const [inviteOpen, setInviteOpen] = useState<string | null>(null);
-  const [inviteEmail, setInviteEmail] = useState("");
-  const [inviting, setInviting] = useState(false);
+  // Search State
+  const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
     fetchWorkspaces();
@@ -122,305 +120,307 @@ export default function Dashboard() {
     }
   };
 
-  const handleInvite = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!inviteOpen || !inviteEmail) return;
-
-    setInviting(true);
-    try {
-      const res = await api.workspaces.invite(inviteOpen, inviteEmail);
-      navigator.clipboard.writeText(res.link);
-      toast({
-        title: "Invited & Copied",
-        description: "User added and invite link copied to clipboard",
-      });
-      setInviteEmail("");
-      setInviteOpen(null);
-    } catch (error: any) {
-        toast({
-            variant: "destructive",
-            title: "Error",
-            description: error.message || "Failed to invite user",
-        });
-    } finally {
-        setInviting(false);
-    }
-  };
-
   const handleLogout = () => {
     logout();
     navigate("/");
   };
 
-  const getRoleBadge = (role: string) => {
-    switch (role) {
-      case 'OWNER':
-        return <span className="px-2 py-0.5 rounded-full bg-teal-500/20 text-teal-400 text-[10px] font-bold tracking-wider border border-teal-500/20">OWNER</span>;
-      case 'ADMIN':
-        return <span className="px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-400 text-[10px] font-bold tracking-wider border border-purple-500/20">ADMIN</span>;
-      case 'MEMBER':
-        return <span className="px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 text-[10px] font-bold tracking-wider border border-blue-500/20">MEMBER</span>;
-      default:
-        return <span className="px-2 py-0.5 rounded-full bg-gray-500/20 text-gray-400 text-[10px] font-bold tracking-wider border border-gray-500/20">VIEWER</span>;
-    }
-  };
+  const filteredWorkspaces = workspaces.filter(w => 
+    w.name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  // Mock Recent Activity
+  const recentActivity = [
+    { id: 1, text: "You edited main.tsx in Frontend", time: "2m ago", type: "edit" },
+    { id: 2, text: "Alex joined Backend API", time: "1h ago", type: "join" },
+    { id: 3, text: "New deployment in Landing Page", time: "3h ago", type: "deploy" },
+  ];
+
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background text-foreground">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-background text-foreground relative overflow-hidden flex">
-      {/* Background Effect */}
-      <div className="fixed inset-0 z-0 pointer-events-none">
-        <div className="absolute inset-0 bg-gradient-to-br from-background via-background/95 to-background/90" />
-        <div className="absolute top-0 left-1/4 w-96 h-96 bg-teal-500/10 rounded-full blur-[128px]" />
-        <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-cyan-500/10 rounded-full blur-[128px]" />
-      </div>
+    <div className="min-h-screen bg-background text-foreground flex flex-col">
+      {/* Top Navigation - Control Center Style */}
+      <header className="sticky top-0 z-50 w-full border-b border-white/10 bg-background/80 backdrop-blur-md supports-[backdrop-filter]:bg-background/60">
+        <div className="container mx-auto px-4 h-16 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-8">
+            <a className="flex items-center space-x-2" href="/">
+              <div className="bg-primary/10 p-2 rounded-lg">
+                <LayoutGrid className="h-5 w-5 text-primary" />
+              </div>
+              <span className="hidden font-bold sm:inline-block text-lg tracking-tight">CollabCode</span>
+            </a>
+            <nav className="hidden md:flex items-center space-x-6 text-sm font-medium">
+              <a className="text-foreground hover:text-primary transition-colors" href="/dashboard">Dashboard</a>
+              <a className="text-muted-foreground hover:text-foreground transition-colors" href="#">My Tasks</a>
+              <a className="text-muted-foreground hover:text-foreground transition-colors" href="#">Inbox</a>
+            </nav>
+          </div>
 
-      {/* Sidebar - SaaS Style */}
-      <aside className="hidden md:flex flex-col w-64 border-r border-white/10 bg-black/20 backdrop-blur-xl z-20 h-screen sticky top-0 pt-8 pb-6 px-4">
-        {/* User Info Panel */}
-        <div className="mb-8 p-4 rounded-xl bg-white/5 border border-white/10 shadow-lg relative overflow-hidden group hover:border-teal-500/30 transition-all duration-300">
-          <div className="absolute inset-0 bg-gradient-to-br from-teal-500/10 to-cyan-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-          <div className="relative flex items-center gap-3">
-            <Avatar className="h-10 w-10 border border-white/20 ring-2 ring-transparent group-hover:ring-teal-500/30 transition-all">
-              <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${user?.email}`} alt={user?.email} />
-              <AvatarFallback className="bg-gradient-to-br from-teal-500 to-cyan-500 text-white font-bold">
-                {user?.email?.charAt(0).toUpperCase()}
-              </AvatarFallback>
-            </Avatar>
-            <div className="overflow-hidden">
-              <p className="text-sm font-medium text-white truncate" title={user?.email}>
-                {user?.email?.split('@')[0]}
-              </p>
-              <p className="text-xs text-muted-foreground flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-teal-500 animate-pulse" />
-                Online
-              </p>
+          <div className="hidden md:flex flex-1 items-center justify-center max-w-md relative">
+            <Search className="absolute left-3 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search workspaces, files, or people... (Cmd+K)"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="h-10 pl-10 w-full bg-muted/50 border-transparent focus:bg-background focus:border-primary/50 transition-all"
+            />
+          </div>
+
+          <div className="flex items-center gap-4">
+            <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground">
+              <Bell className="h-5 w-5" />
+            </Button>
+            <div className="h-6 w-px bg-white/10" />
+            <div className="flex items-center gap-3">
+                <div className="hidden md:block text-right">
+                    <p className="text-sm font-medium leading-none">{user?.name || 'User'}</p>
+                    <p className="text-xs text-muted-foreground mt-1">{user?.email}</p>
+                </div>
+                <Avatar className="h-9 w-9 border border-white/10">
+                    <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${user?.email}`} />
+                    <AvatarFallback className="bg-primary/20 text-primary text-xs">
+                        {user?.email?.substring(0, 2).toUpperCase()}
+                    </AvatarFallback>
+                </Avatar>
+                <Button variant="ghost" size="icon" onClick={handleLogout} title="Logout" className="hover:bg-red-500/10 hover:text-red-500">
+                    <LogOut className="h-4 w-4" />
+                </Button>
             </div>
           </div>
         </div>
+      </header>
 
-        {/* Navigation */}
-        <nav className="flex-1 space-y-2">
-          <Button variant="ghost" className="w-full justify-start text-teal-400 bg-teal-500/10 hover:bg-teal-500/20 hover:text-teal-300">
-            <LayoutGrid className="mr-2 h-4 w-4" />
-            Workspaces
-          </Button>
-          <Button variant="ghost" className="w-full justify-start text-muted-foreground hover:text-white hover:bg-white/5">
-            <Settings className="mr-2 h-4 w-4" />
-            Settings
-          </Button>
-        </nav>
+      <main className="flex-1 container mx-auto px-4 py-8">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+          
+          {/* Main Content Area */}
+          <div className="lg:col-span-8 space-y-8">
+            {/* Quick Actions / Welcome */}
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-gradient-to-br from-primary/5 via-primary/5 to-transparent p-6 rounded-2xl border border-primary/10">
+                <div>
+                    <h1 className="text-2xl font-bold tracking-tight mb-2">Welcome back, {user?.name?.split(' ')[0] || 'Developer'}</h1>
+                    <p className="text-muted-foreground">You have {workspaces.length} active workspaces. What would you like to build today?</p>
+                </div>
+                <div className="flex items-center gap-3">
+                    <Dialog open={joinOpen} onOpenChange={setJoinOpen}>
+                        <DialogTrigger asChild>
+                            <Button variant="outline" className="gap-2 h-10 border-primary/20 hover:bg-primary/5">
+                                <DoorOpen className="h-4 w-4" />
+                                Join with ID
+                            </Button>
+                        </DialogTrigger>
+                        <DialogContent>
+                            <DialogHeader>
+                                <DialogTitle>Join Existing Workspace</DialogTitle>
+                            </DialogHeader>
+                            <form onSubmit={handleJoinWorkspace} className="space-y-4 py-4">
+                                <div className="space-y-2">
+                                    <label className="text-sm font-medium">Workspace ID</label>
+                                    <Input 
+                                        placeholder="Enter workspace ID..." 
+                                        value={joinWorkspaceId}
+                                        onChange={(e) => setJoinWorkspaceId(e.target.value)}
+                                    />
+                                </div>
+                                <Button type="submit" className="w-full" disabled={joining}>
+                                    {joining ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Join Workspace"}
+                                </Button>
+                            </form>
+                        </DialogContent>
+                    </Dialog>
 
-        {/* Logout */}
-        <Button 
-          variant="ghost" 
-          className="w-full justify-start text-muted-foreground hover:text-red-400 hover:bg-red-500/10 mt-auto"
-          onClick={handleLogout}
-        >
-          <LogOut className="mr-2 h-4 w-4" />
-          Sign Out
-        </Button>
-      </aside>
-
-      {/* Main Content */}
-      <main className="flex-1 relative z-10 pt-12 md:pt-24 px-6 md:px-12 pb-12 overflow-y-auto h-screen scrollbar-hide">
-        <div className="max-w-7xl mx-auto">
-          {/* Header Section */}
-          <div className="flex flex-col lg:flex-row justify-between items-start lg:items-end mb-12 gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <div>
-              <h1 className="text-4xl font-bold text-white mb-2 tracking-tight">
-                Your Workspaces
-              </h1>
-              <p className="text-muted-foreground text-lg font-light">
-                Manage and collaborate in real time.
-              </p>
+                    <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+                        <DialogTrigger asChild>
+                            <Button className="gap-2 h-10 shadow-lg shadow-primary/20">
+                                <Plus className="h-4 w-4" />
+                                New Workspace
+                            </Button>
+                        </DialogTrigger>
+                        <DialogContent>
+                            <DialogHeader>
+                                <DialogTitle>Create New Workspace</DialogTitle>
+                            </DialogHeader>
+                            <form onSubmit={handleCreateWorkspace} className="space-y-4 py-4">
+                                <div className="space-y-2">
+                                    <label className="text-sm font-medium">Workspace Name</label>
+                                    <Input 
+                                        placeholder="e.g. My Awesome Project" 
+                                        value={newWorkspaceName}
+                                        onChange={(e) => setNewWorkspaceName(e.target.value)}
+                                    />
+                                </div>
+                                <Button type="submit" className="w-full" disabled={creating}>
+                                    {creating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Create Workspace"}
+                                </Button>
+                            </form>
+                        </DialogContent>
+                    </Dialog>
+                </div>
             </div>
 
-            <div className="flex items-center gap-4 w-full lg:w-auto">
-                {/* Join Workspace Button */}
-                <Dialog open={joinOpen} onOpenChange={setJoinOpen}>
-                    <DialogTrigger asChild>
-                        <Button variant="outline" className="h-12 px-6 border-white/10 hover:bg-white/5 text-white hover:text-teal-400 transition-all flex-1 lg:flex-none">
-                            <DoorOpen className="mr-2 h-5 w-5" />
-                            Join Workspace
-                        </Button>
-                    </DialogTrigger>
-                    <DialogContent className="bg-black/90 backdrop-blur-2xl border-white/10 sm:max-w-[425px] shadow-2xl">
-                        <DialogHeader>
-                            <DialogTitle className="text-2xl font-bold">Join Workspace</DialogTitle>
-                        </DialogHeader>
-                        <form onSubmit={handleJoinWorkspace} className="space-y-6 mt-4">
-                            <div className="space-y-2">
-                                <label className="text-sm text-muted-foreground">Workspace ID</label>
-                                <Input
-                                    placeholder="Enter Workspace ID"
-                                    value={joinWorkspaceId}
-                                    onChange={(e) => setJoinWorkspaceId(e.target.value)}
-                                    className="bg-white/5 border-white/10 focus:border-teal-500/50 h-12 text-lg px-4"
-                                />
-                                <p className="text-xs text-muted-foreground">Ask your team admin for the Workspace ID.</p>
-                            </div>
-                            <Button 
-                                type="submit" 
-                                className="w-full h-12 bg-white/10 hover:bg-white/20 text-white font-semibold text-lg border border-white/10"
-                                disabled={joining}
-                            >
-                                {joining ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : "Join Workspace"}
-                            </Button>
-                        </form>
-                    </DialogContent>
-                </Dialog>
-
-                {/* Create Workspace Button */}
-                <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-                <DialogTrigger asChild>
-                    <Button className="h-12 px-6 bg-gradient-to-r from-teal-500 to-cyan-500 hover:from-teal-400 hover:to-cyan-400 text-white shadow-lg shadow-teal-500/25 transition-all duration-300 hover:scale-105 border border-white/10 rounded-xl flex-1 lg:flex-none">
-                    <Plus className="mr-2 h-5 w-5" />
-                    Create New
-                    </Button>
-                </DialogTrigger>
-                <DialogContent className="bg-black/90 backdrop-blur-2xl border-white/10 sm:max-w-[425px] shadow-2xl">
-                    <DialogHeader>
-                    <DialogTitle className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-white/70">Create Workspace</DialogTitle>
-                    </DialogHeader>
-                    <form onSubmit={handleCreateWorkspace} className="space-y-6 mt-4">
-                    <div className="space-y-2">
-                        <Input
-                        placeholder="Workspace Name (e.g., Project Alpha)"
-                        value={newWorkspaceName}
-                        onChange={(e) => setNewWorkspaceName(e.target.value)}
-                        className="bg-white/5 border-white/10 focus:border-teal-500/50 focus:ring-teal-500/20 h-12 text-lg px-4 transition-all"
-                        />
+            {/* Workspaces List */}
+            <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                    <h2 className="text-lg font-semibold flex items-center gap-2">
+                        <LayoutGrid className="h-4 w-4 text-primary" />
+                        Your Workspaces
+                    </h2>
+                    <div className="flex gap-2">
+                        <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground text-xs">Recently Updated</Button>
+                        <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground text-xs">Alphabetical</Button>
                     </div>
-                    <Button 
-                        type="submit" 
-                        className="w-full h-12 bg-gradient-to-r from-teal-500 to-cyan-500 font-semibold text-lg"
-                        disabled={creating}
-                    >
-                        {creating ? (
-                        <>
-                            <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                            Creating...
-                        </>
-                        ) : (
-                        "Create Workspace"
-                        )}
-                    </Button>
-                    </form>
-                </DialogContent>
-                </Dialog>
+                </div>
+
+                {filteredWorkspaces.length === 0 ? (
+                    <Card className="border-dashed bg-muted/20">
+                        <CardContent className="flex flex-col items-center justify-center py-12 text-center">
+                            <div className="rounded-full bg-background p-4 mb-4 border shadow-sm">
+                                <LayoutGrid className="h-8 w-8 text-muted-foreground" />
+                            </div>
+                            <h3 className="text-lg font-medium">No workspaces found</h3>
+                            <p className="text-sm text-muted-foreground max-w-sm mt-1 mb-6">
+                                {searchQuery ? "Try adjusting your search terms." : "Get started by creating your first workspace to collaborate with your team."}
+                            </p>
+                            {!searchQuery && (
+                                <Button onClick={() => setCreateOpen(true)} variant="outline">
+                                    Create Workspace
+                                </Button>
+                            )}
+                        </CardContent>
+                    </Card>
+                ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {filteredWorkspaces.map((workspace) => (
+                            <Card 
+                                key={workspace.id} 
+                                className="group cursor-pointer hover:border-primary/50 transition-all hover:shadow-md bg-card/50 backdrop-blur-sm border-white/5"
+                                onClick={() => navigate(`/workspace/${workspace.id}`)}
+                            >
+                                <CardHeader className="pb-3">
+                                    <div className="flex justify-between items-start">
+                                        <div className="space-y-1">
+                                            <CardTitle className="text-base font-medium group-hover:text-primary transition-colors flex items-center gap-2">
+                                                {workspace.name}
+                                            </CardTitle>
+                                            <p className="text-xs text-muted-foreground font-mono">
+                                                ID: {workspace.id.substring(0, 8)}...
+                                            </p>
+                                        </div>
+                                        <div className="flex -space-x-2">
+                                            {workspace.members.slice(0, 3).map((member, i) => (
+                                                <Avatar key={i} className="h-6 w-6 border-2 border-background">
+                                                    <AvatarFallback className="text-[10px] bg-primary/10 text-primary">
+                                                        {member.role[0]}
+                                                    </AvatarFallback>
+                                                </Avatar>
+                                            ))}
+                                            {workspace.members.length > 3 && (
+                                                <div className="h-6 w-6 rounded-full bg-muted flex items-center justify-center text-[10px] border-2 border-background font-medium text-muted-foreground">
+                                                    +{workspace.members.length - 3}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                </CardHeader>
+                                <CardContent>
+                                    <div className="flex items-center justify-between text-xs text-muted-foreground mt-2">
+                                        <div className="flex items-center gap-3">
+                                            <div className="flex items-center gap-1">
+                                                <Clock className="h-3 w-3" />
+                                                <span>{new Date(workspace.updatedAt).toLocaleDateString()}</span>
+                                            </div>
+                                            <div className="flex items-center gap-1">
+                                                <Users className="h-3 w-3" />
+                                                <span>{workspace.members.length}</span>
+                                            </div>
+                                        </div>
+                                        <ArrowRight className="h-4 w-4 opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all text-primary" />
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        ))}
+                    </div>
+                )}
             </div>
           </div>
 
-          {loading ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {[1, 2, 3].map((i) => (
-                    <div key={i} className="h-48 rounded-2xl bg-white/5 animate-pulse border border-white/5" />
-                ))}
-            </div>
-          ) : workspaces.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-24 px-4 text-center animate-in fade-in zoom-in duration-500 border border-dashed border-white/10 rounded-3xl bg-white/5">
-              <div className="relative mb-8 group">
-                <div className="absolute inset-0 bg-teal-500/20 rounded-full blur-3xl group-hover:bg-teal-500/30 transition-all duration-500" />
-                <div className="relative p-8 rounded-3xl bg-white/5 border border-white/10 backdrop-blur-xl shadow-2xl">
-                  <Users className="h-16 w-16 text-teal-500" />
-                </div>
-              </div>
-              <h3 className="text-3xl font-bold text-white mb-3">No workspaces yet</h3>
-              <p className="text-muted-foreground text-lg mb-8 max-w-md mx-auto leading-relaxed">
-                Create your first workspace or join an existing one to start collaborating.
-              </p>
-              <Button 
-                onClick={() => setCreateOpen(true)}
-                size="lg"
-                className="h-12 px-8 bg-white/5 hover:bg-white/10 border border-white/10 hover:border-teal-500/50 text-white transition-all duration-300 hover:scale-105"
-              >
-                <Plus className="mr-2 h-5 w-5" />
-                Create Workspace
-              </Button>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pb-20">
-              {workspaces.map((workspace, index) => {
-                const userRole = workspace.members.find(m => m.userId === user?.id)?.role || 'VIEWER';
-                return (
-                    <Card 
-                    key={workspace.id}
-                    className="group relative overflow-hidden bg-white/5 backdrop-blur-md border-white/10 hover:border-teal-500/50 transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl hover:shadow-teal-500/10 animate-in fade-in slide-in-from-bottom-4 flex flex-col justify-between"
-                    style={{ animationDelay: `${index * 50}ms` }}
-                    >
-                    <div className="absolute inset-0 bg-gradient-to-br from-teal-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
-                    
-                    <CardHeader className="relative z-10 pb-2">
-                        <div className="flex justify-between items-start mb-4">
-                        <div className="flex items-center gap-2">
-                            {getRoleBadge(userRole)}
-                            <span className="text-xs text-muted-foreground flex items-center gap-1 ml-2">
-                                <Clock className="h-3 w-3" />
-                                {new Date(workspace.createdAt).toLocaleDateString()}
-                            </span>
-                        </div>
-                        <div className="flex items-center gap-1 text-muted-foreground bg-black/20 px-2 py-1 rounded-full text-xs border border-white/5">
-                            <Users className="h-3 w-3" />
-                            {workspace.members.length}
-                        </div>
-                        </div>
-                        <CardTitle className="text-2xl font-bold text-white group-hover:text-teal-400 transition-colors">
-                            {workspace.name}
-                        </CardTitle>
-                        <p className="text-xs text-muted-foreground mt-2 font-mono opacity-50 truncate" title="Workspace ID">
-                            ID: {workspace.id}
-                        </p>
-                    </CardHeader>
+          {/* Sidebar - Activity & Info */}
+          <div className="lg:col-span-4 space-y-6">
+            
+            {/* Quick Stats / Pro Tip */}
+            <Card className="bg-gradient-to-br from-primary/10 via-background to-background border-primary/20 overflow-hidden relative">
+                <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
+                <CardContent className="p-6 space-y-4 relative z-10">
+                    <div className="flex items-center gap-2 text-primary font-semibold">
+                        <Star className="h-4 w-4" />
+                        <span>Pro Tip</span>
+                    </div>
+                    <p className="text-sm text-muted-foreground leading-relaxed">
+                        Use <kbd className="pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground opacity-100">Cmd+K</kbd> to open the command palette and navigate between files quickly.
+                    </p>
+                </CardContent>
+            </Card>
 
-                    <CardContent className="relative z-10 pt-4 flex items-center gap-2 mt-auto">
-                        <Button 
-                            className="flex-1 bg-white/5 hover:bg-teal-500/20 text-white hover:text-teal-300 border border-white/10 hover:border-teal-500/50 transition-all group-hover:shadow-lg group-hover:shadow-teal-500/10"
-                            onClick={() => navigate(`/workspace/${workspace.id}`)}
-                        >
-                            Open Workspace
-                        </Button>
-                        
-                        {(userRole === 'OWNER' || userRole === 'ADMIN') && (
-                            <Dialog open={inviteOpen === workspace.id} onOpenChange={(open) => { setInviteOpen(open ? workspace.id : null); setInviteEmail(""); }}>
-                                <DialogTrigger asChild>
-                                <Button size="icon" variant="ghost" className="h-10 w-10 border border-white/10 hover:bg-white/10 hover:text-white">
-                                    <Users className="h-4 w-4" />
-                                </Button>
-                                </DialogTrigger>
-                                <DialogContent className="bg-black/90 backdrop-blur-2xl border-white/10 shadow-2xl">
-                                <DialogHeader>
-                                    <DialogTitle>Invite Collaborators</DialogTitle>
-                                </DialogHeader>
-                                <form onSubmit={handleInvite} className="space-y-4 py-4">
-                                    <div className="p-4 rounded-xl bg-teal-500/10 border border-teal-500/20">
-                                    <p className="text-sm text-teal-200">
-                                        Invite others to <strong className="text-white">{workspace.name}</strong>
-                                    </p>
-                                    </div>
-                                    <div className="space-y-2">
-                                    <Input 
-                                        type="email"
-                                        placeholder="colleague@example.com"
-                                        value={inviteEmail}
-                                        onChange={(e) => setInviteEmail(e.target.value)}
-                                        className="bg-white/5 border-white/10 focus:ring-teal-500/20"
-                                        required
-                                    />
-                                    </div>
-                                    <Button type="submit" disabled={inviting} className="w-full bg-teal-500 hover:bg-teal-600 shadow-lg shadow-teal-500/20">
-                                    {inviting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Users className="mr-2 h-4 w-4" />}
-                                    Invite & Copy Link
-                                    </Button>
-                                </form>
-                                </DialogContent>
-                            </Dialog>
-                        )}
-                    </CardContent>
-                    </Card>
-                );
-              })}
-            </div>
-          )}
+            {/* Recent Activity Feed */}
+            <Card className="bg-card/50 backdrop-blur-sm border-white/5">
+                <CardHeader className="pb-3">
+                    <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-2">
+                        <Clock className="h-3 w-3" />
+                        Recent Activity
+                    </CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <div className="space-y-0">
+                        {recentActivity.map((activity, i) => (
+                            <div key={activity.id} className="flex gap-4 py-3 border-b border-white/5 last:border-0 hover:bg-white/5 p-2 rounded-lg transition-colors cursor-pointer group">
+                                <div className={`h-2 w-2 mt-2 rounded-full flex-shrink-0 ${
+                                    activity.type === 'edit' ? 'bg-blue-500' : 
+                                    activity.type === 'join' ? 'bg-green-500' : 'bg-purple-500'
+                                }`} />
+                                <div className="space-y-1">
+                                    <p className="text-sm text-foreground/90 group-hover:text-primary transition-colors">{activity.text}</p>
+                                    <p className="text-xs text-muted-foreground">{activity.time}</p>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                    <Button variant="ghost" size="sm" className="w-full mt-4 text-xs text-muted-foreground hover:text-foreground">
+                        View All Activity
+                    </Button>
+                </CardContent>
+            </Card>
+
+            {/* Team / Members (Placeholder) */}
+            <Card className="bg-card/50 backdrop-blur-sm border-white/5">
+                <CardHeader className="pb-3">
+                    <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-2">
+                        <Users className="h-3 w-3" />
+                        Online Team
+                    </CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <div className="flex -space-x-2 overflow-hidden py-2">
+                         {[1,2,3,4].map((i) => (
+                            <Avatar key={i} className="inline-block h-8 w-8 ring-2 ring-background grayscale hover:grayscale-0 transition-all cursor-pointer">
+                                <AvatarImage src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${i}`} />
+                                <AvatarFallback>T{i}</AvatarFallback>
+                            </Avatar>
+                         ))}
+                         <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center text-[10px] font-medium ring-2 ring-background">
+                            +5
+                         </div>
+                    </div>
+                </CardContent>
+            </Card>
+
+          </div>
         </div>
       </main>
     </div>

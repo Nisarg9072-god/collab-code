@@ -11,7 +11,14 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { ArrowLeft, Users, Settings, Layout, Trash2, LogOut, Code, Copy, Check, Shield, ShieldAlert, Loader2, Edit2, Activity } from "lucide-react";
+import { ArrowLeft, Users, Settings, Layout, Trash2, LogOut, Code, Copy, Check, Shield, ShieldAlert, Loader2, Edit2, Activity, FileText, Plus } from "lucide-react";
+
+interface File {
+  id: string;
+  name: string;
+  language: string;
+  updatedAt?: string;
+}
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuLabel, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 
 interface Member {
@@ -48,10 +55,12 @@ export default function WorkspaceDetail() {
   const [editOpen, setEditOpen] = useState(false);
   const [newName, setNewName] = useState("");
   const [activeUserIds, setActiveUserIds] = useState<string[]>([]);
+  const [files, setFiles] = useState<File[]>([]);
 
   useEffect(() => {
     if (id) {
         fetchWorkspace();
+        fetchFiles();
         // Enter presence
         api.workspaces.enterPresence(id);
         
@@ -89,6 +98,16 @@ export default function WorkspaceDetail() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const fetchFiles = async () => {
+      if (!id) return;
+      try {
+          const data = await api.files.list(id);
+          setFiles(data);
+      } catch (e) {
+          console.error("Failed to fetch files", e);
+      }
   };
 
   const handleInvite = async (e: React.FormEvent) => {
@@ -332,47 +351,95 @@ export default function WorkspaceDetail() {
                 <TabsContent value="overview" className="space-y-6 animate-in fade-in slide-in-from-bottom-2">
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                         <Card className="bg-white/5 border-white/10 backdrop-blur-md">
-                            <CardHeader>
-                                <CardTitle className="text-lg text-white">Members</CardTitle>
+                            <CardHeader className="pb-2">
+                                <CardTitle className="text-sm font-medium text-muted-foreground">Total Files</CardTitle>
                             </CardHeader>
                             <CardContent>
-                                <div className="text-3xl font-bold text-teal-400">{workspace.members.length}</div>
-                                <p className="text-muted-foreground text-sm">Total collaborators</p>
+                                <div className="text-2xl font-bold text-white">{files.length}</div>
                             </CardContent>
                         </Card>
                         <Card className="bg-white/5 border-white/10 backdrop-blur-md">
-                            <CardHeader>
-                                <CardTitle className="text-lg text-white">Your Role</CardTitle>
+                            <CardHeader className="pb-2">
+                                <CardTitle className="text-sm font-medium text-muted-foreground">Collaborators</CardTitle>
                             </CardHeader>
                             <CardContent>
-                                <div className="text-3xl font-bold text-teal-400">{currentUserRole}</div>
-                                <p className="text-muted-foreground text-sm">Access Level</p>
+                                <div className="text-2xl font-bold text-white">{workspace.members.length}</div>
                             </CardContent>
                         </Card>
                         <Card className="bg-white/5 border-white/10 backdrop-blur-md">
-                            <CardHeader>
-                                <CardTitle className="text-lg text-white">Live Now</CardTitle>
+                            <CardHeader className="pb-2">
+                                <CardTitle className="text-sm font-medium text-muted-foreground">Active Now</CardTitle>
                             </CardHeader>
                             <CardContent>
-                                <div className="text-3xl font-bold text-teal-400">{activeUserIds.length}</div>
-                                <p className="text-muted-foreground text-sm">Active users</p>
+                                <div className="text-2xl font-bold text-teal-400">{activeUserIds.length}</div>
                             </CardContent>
                         </Card>
                     </div>
 
-                    <div className="mt-8">
-                        <h2 className="text-xl font-bold text-white mb-4">Quick Actions</h2>
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                            <Button variant="outline" className="h-auto py-4 flex flex-col items-center gap-2 border-white/10 hover:bg-white/5 text-white hover:text-teal-400" onClick={() => toast({ title: "Coming Soon", description: "Documents feature is coming soon" })}>
-                                <Layout className="h-6 w-6" />
-                                <span>Create Document</span>
+                    {/* File Browser */}
+                    <Card className="bg-white/5 border-white/10 backdrop-blur-md overflow-hidden">
+                        <CardHeader className="flex flex-row items-center justify-between border-b border-white/10 bg-white/5 py-3">
+                            <div className="flex items-center gap-2">
+                                <Code className="h-4 w-4 text-muted-foreground" />
+                                <span className="text-sm font-medium text-white">Repository Files</span>
+                            </div>
+                            <Button size="sm" variant="ghost" className="h-8 text-xs hover:bg-white/10 hover:text-white" onClick={() => navigate(`/workspace/${id}/editor`)}>
+                                <Plus className="mr-1 h-3 w-3" />
+                                New File
                             </Button>
-                            <Button variant="outline" className="h-auto py-4 flex flex-col items-center gap-2 border-white/10 hover:bg-white/5 text-white hover:text-teal-400" onClick={() => toast({ title: "Coming Soon", description: "Whiteboard feature is coming soon" })}>
-                                <Layout className="h-6 w-6" />
-                                <span>New Whiteboard</span>
-                            </Button>
+                        </CardHeader>
+                        <div className="divide-y divide-white/5">
+                            {files.length === 0 ? (
+                                <div className="py-12 text-center">
+                                    <div className="mx-auto w-12 h-12 rounded-full bg-white/5 flex items-center justify-center mb-3">
+                                        <FileText className="h-6 w-6 text-muted-foreground" />
+                                    </div>
+                                    <h3 className="text-sm font-medium text-white mb-1">No files yet</h3>
+                                    <p className="text-xs text-muted-foreground mb-4">Create your first file to start coding</p>
+                                    <Button size="sm" className="bg-teal-500 hover:bg-teal-600 text-white" onClick={() => navigate(`/workspace/${id}/editor`)}>
+                                        Open Editor
+                                    </Button>
+                                </div>
+                            ) : (
+                                files.map((file) => (
+                                    <div 
+                                        key={file.id} 
+                                        className="flex items-center justify-between p-3 hover:bg-white/5 cursor-pointer transition-colors group"
+                                        onClick={() => navigate(`/workspace/${id}/editor`)}
+                                    >
+                                        <div className="flex items-center gap-3">
+                                            <FileText className="h-4 w-4 text-teal-500" />
+                                            <span className="text-sm text-white font-mono">{file.name}</span>
+                                        </div>
+                                        <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                                            <span>{file.language}</span>
+                                            <span className="opacity-0 group-hover:opacity-100 transition-opacity">Updated recently</span>
+                                        </div>
+                                    </div>
+                                ))
+                            )}
                         </div>
-                    </div>
+                    </Card>
+
+                    {/* README Preview (Mock if real one doesn't exist) */}
+                    <Card className="bg-white/5 border-white/10 backdrop-blur-md">
+                        <CardHeader className="border-b border-white/10 bg-white/5 py-3">
+                            <div className="flex items-center gap-2">
+                                <FileText className="h-4 w-4 text-muted-foreground" />
+                                <span className="text-sm font-medium text-white uppercase tracking-wider">README.md</span>
+                            </div>
+                        </CardHeader>
+                        <CardContent className="p-6 prose prose-invert max-w-none">
+                            <h1>Welcome to {workspace.name}</h1>
+                            <p>This is your collaborative workspace. Use the editor to write code in real-time with your team.</p>
+                            <h3>Getting Started</h3>
+                            <ul>
+                                <li>Click <strong>Open Editor</strong> to start coding</li>
+                                <li>Invite team members using the <strong>Invite</strong> button</li>
+                                <li>Create new files from the file explorer</li>
+                            </ul>
+                        </CardContent>
+                    </Card>
                 </TabsContent>
 
                 {/* Members Tab */}

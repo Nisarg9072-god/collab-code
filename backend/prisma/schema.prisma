@@ -18,6 +18,7 @@ model User {
 
   workspaceMembers WorkspaceMember[]
   ownedWorkspaces  Workspace[]
+  activities       WorkspaceActivity[]
 }
 
 model Workspace {
@@ -29,6 +30,7 @@ model Workspace {
 
   members   WorkspaceMember[]
   files     ProjectFile[]
+  activities WorkspaceActivity[]
 }
 
 model ProjectFile {
@@ -41,6 +43,29 @@ model ProjectFile {
   updatedAt   DateTime @updatedAt
 
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  versions    FileVersion[]
+}
+
+model FileVersion {
+  id          String   @id @default(uuid())
+  fileId      String
+  content     String   @db.Text
+  createdBy   String?
+  createdAt   DateTime @default(now())
+
+  file        ProjectFile @relation(fields: [fileId], references: [id], onDelete: Cascade)
+}
+
+model WorkspaceActivity {
+  id          String   @id @default(uuid())
+  workspaceId String
+  userId      String
+  actionType  String
+  metadata    Json?
+  createdAt   DateTime @default(now())
+
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model WorkspaceMember {
@@ -102,21 +127,16 @@ model DocSnapshot {
 model DocEvent {
   id        String   @id @default(uuid())
   docId     String
-  userId    String
-  type      String   // "WS_CONNECT", "UPDATE", "RESTORE", etc.
-  bytes     Int?
-  createdAt DateTime @default(now())
-
   doc       Doc      @relation(fields: [docId], references: [id], onDelete: Cascade)
-
-  @@index([docId, createdAt])
-  @@index([userId, createdAt])
+  type      String
+  payload   Json
+  createdAt DateTime @default(now())
 }
 
 enum Role {
   OWNER
   ADMIN
-  MEMBER
   EDITOR
   VIEWER
+  MEMBER
 }

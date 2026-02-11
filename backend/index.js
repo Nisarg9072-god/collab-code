@@ -7,6 +7,7 @@ import { z, ZodError } from "zod";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import pinoHttp from "pino-http";
+import AdmZip from "adm-zip";
 
 /**
  * @swagger
@@ -756,7 +757,7 @@ app.get("/api/workspaces/:id/files", auth, async (req, res, next) => {
     const files = await prisma.projectFile.findMany({
       where: { workspaceId: id },
       orderBy: { name: "asc" },
-      select: { id: true, name: true, language: true, updatedAt: true } // Don't fetch content list for performance
+      select: { id: true, name: true, language: true, updatedAt: true }
     });
     res.json(files);
   } catch (err) {
@@ -788,6 +789,17 @@ app.post("/api/workspaces/:id/files", auth, async (req, res, next) => {
         language: language || "plaintext"
       }
     });
+
+    // Log Activity
+    await prisma.workspaceActivity.create({
+      data: {
+        workspaceId: id,
+        userId: req.user.sub,
+        actionType: "FILE_CREATED",
+        metadata: { fileName: name, fileId: file.id }
+      }
+    });
+
     res.json(file);
   } catch (err) {
     next(err);
@@ -816,7 +828,7 @@ app.get("/api/files/:id", auth, async (req, res, next) => {
   }
 });
 
-// Update File
+// Update File (Create Version + Activity)
 app.put("/api/files/:id", auth, async (req, res, next) => {
   try {
     const { id } = req.params;
@@ -833,6 +845,17 @@ app.put("/api/files/:id", auth, async (req, res, next) => {
       return res.status(403).json({ error: "Write access denied" });
     }
 
+    // Create Version if content changed
+    if (content !== undefined && content !== file.content) {
+        await prisma.fileVersion.create({
+            data: {
+                fileId: id,
+                content: file.content, // Save PREVIOUS content as version
+                createdBy: req.user.sub
+            }
+        });
+    }
+
     const updated = await prisma.projectFile.update({
       where: { id },
       data: {
@@ -840,6 +863,38 @@ app.put("/api/files/:id", auth, async (req, res, next) => {
         name: name !== undefined ? name : undefined,
       }
     });
+
+    // Log Activity (Debounce logic handled by frontend, but we log meaningful updates here)
+    // To avoid spam, we might want to skip logging every keystroke save, but since this API is likely called on save/autosave, 
+    // we can log. For now, let's log "FILE_UPDATED".
+    // Optionally, only log if it's been a while? No, let's keep it simple for now.
+    // Actually, spamming activity log is bad. 
+    // Let's only log if name changed OR if it's an explicit save (we don't distinguish yet).
+    // We will log "FILE_UPDATED" but maybe we can limit it in frontend display.
+    
+    if (name !== undefined && name !== file.name) {
+        await prisma.workspaceActivity.create({
+            data: {
+                workspaceId: file.workspaceId,
+                userId: req.user.sub,
+                actionType: "FILE_RENAMED",
+                metadata: { oldName: file.name, newName: name, fileId: id }
+            }
+        });
+    } else if (content !== undefined) {
+         // Maybe don't log every content update to activity log to keep it clean?
+         // User prompt says: "A edited index.ts".
+         // Let's log it.
+         await prisma.workspaceActivity.create({
+            data: {
+                workspaceId: file.workspaceId,
+                userId: req.user.sub,
+                actionType: "FILE_UPDATED",
+                metadata: { fileName: file.name, fileId: id }
+            }
+        });
+    }
+
     res.json(updated);
   } catch (err) {
     next(err);
@@ -863,11 +918,209 @@ app.delete("/api/files/:id", auth, async (req, res, next) => {
     }
 
     await prisma.projectFile.delete({ where: { id } });
+
+    // Log Activity
+    await prisma.workspaceActivity.create({
+        data: {
+            workspaceId: file.workspaceId,
+            userId: req.user.sub,
+            actionType: "FILE_DELETED",
+            metadata: { fileName: file.name, fileId: id }
+        }
+    });
+
     res.json({ message: "File deleted" });
   } catch (err) {
     next(err);
   }
 });
+
+// --- Versioning APIs ---
+
+// Get File Versions
+app.get("/api/files/:id/versions", auth, async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const file = await prisma.projectFile.findUnique({ where: { id } });
+        if (!file) return res.status(404).json({ error: "File not found" });
+
+        // Access check
+        const member = await prisma.workspaceMember.findUnique({
+            where: { workspaceId_userId: { workspaceId: file.workspaceId, userId: req.user.sub } }
+        });
+        if (!member) return res.status(403).json({ error: "Access denied" });
+
+        const versions = await prisma.fileVersion.findMany({
+            where: { fileId: id },
+            orderBy: { createdAt: 'desc' },
+            select: {
+                id: true,
+                createdAt: true,
+                createdBy: true,
+                // We exclude content from list for performance
+            }
+        });
+
+        // Enrich with user info if possible (manually or via relation if we added it, but we didn't add relation to User for createdBy to keep it simple/flexible)
+        // For now, return as is. Frontend can show "User ID" or we can fetch users.
+        // Let's fetch user emails for createdBy
+        const userIds = [...new Set(versions.map(v => v.createdBy).filter(Boolean))];
+        const users = await prisma.user.findMany({
+            where: { id: { in: userIds } },
+            select: { id: true, email: true }
+        });
+        const userMap = Object.fromEntries(users.map(u => [u.id, u.email]));
+
+        const enriched = versions.map(v => ({
+            ...v,
+            creatorEmail: userMap[v.createdBy] || "Unknown"
+        }));
+
+        res.json(enriched);
+    } catch (err) {
+        next(err);
+    }
+});
+
+// Get Specific Version Content
+app.get("/api/file-versions/:versionId", auth, async (req, res, next) => {
+    try {
+        const { versionId } = req.params;
+        const version = await prisma.fileVersion.findUnique({
+            where: { id: versionId },
+            include: { file: true }
+        });
+        if (!version) return res.status(404).json({ error: "Version not found" });
+
+        // Access check
+        const member = await prisma.workspaceMember.findUnique({
+            where: { workspaceId_userId: { workspaceId: version.file.workspaceId, userId: req.user.sub } }
+        });
+        if (!member) return res.status(403).json({ error: "Access denied" });
+
+        res.json(version);
+    } catch (err) {
+        next(err);
+    }
+});
+
+// Restore Version
+app.post("/api/files/:id/restore", auth, async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const { versionId } = req.body;
+
+        if (!versionId) return res.status(400).json({ error: "Version ID required" });
+
+        const file = await prisma.projectFile.findUnique({ where: { id } });
+        if (!file) return res.status(404).json({ error: "File not found" });
+
+        const version = await prisma.fileVersion.findUnique({ where: { id: versionId } });
+        if (!version) return res.status(404).json({ error: "Version not found" });
+
+        // Access check (Editor+)
+        const member = await prisma.workspaceMember.findUnique({
+            where: { workspaceId_userId: { workspaceId: file.workspaceId, userId: req.user.sub } }
+        });
+        if (!member || ['VIEWER'].includes(member.role)) {
+            return res.status(403).json({ error: "Write access denied" });
+        }
+
+        // Save CURRENT content as a new version before restoring (Safety!)
+        await prisma.fileVersion.create({
+            data: {
+                fileId: id,
+                content: file.content,
+                createdBy: req.user.sub
+            }
+        });
+
+        // Update file content
+        const updated = await prisma.projectFile.update({
+            where: { id },
+            data: { content: version.content }
+        });
+
+        // Log Activity
+        await prisma.workspaceActivity.create({
+            data: {
+                workspaceId: file.workspaceId,
+                userId: req.user.sub,
+                actionType: "FILE_RESTORED",
+                metadata: { fileName: file.name, fileId: id, versionId }
+            }
+        });
+
+        res.json(updated);
+    } catch (err) {
+        next(err);
+    }
+});
+
+// --- Project Export & Activity ---
+
+// Export Workspace (ZIP)
+app.get("/api/workspaces/:id/export", auth, async (req, res, next) => {
+    try {
+        const { id } = req.params;
+
+        // Access check
+        const member = await prisma.workspaceMember.findUnique({
+            where: { workspaceId_userId: { workspaceId: id, userId: req.user.sub } }
+        });
+        if (!member) return res.status(403).json({ error: "Access denied" });
+
+        const workspace = await prisma.workspace.findUnique({ where: { id } });
+        const files = await prisma.projectFile.findMany({ where: { workspaceId: id } });
+
+        const zip = new AdmZip();
+        
+        // Add files to zip
+        files.forEach(file => {
+            // Remove leading slashes to be safe
+            const cleanName = file.name.replace(/^\/+/, '');
+            zip.addFile(cleanName, Buffer.from(file.content, "utf8"));
+        });
+
+        const zipBuffer = zip.toBuffer();
+        
+        const safeName = workspace.name.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+        res.set('Content-Type', 'application/zip');
+        res.set('Content-Disposition', `attachment; filename=${safeName}_export.zip`);
+        res.set('Content-Length', zipBuffer.length);
+        
+        res.send(zipBuffer);
+    } catch (err) {
+        next(err);
+    }
+});
+
+// Get Activity Log
+app.get("/api/workspaces/:id/activity", auth, async (req, res, next) => {
+    try {
+        const { id } = req.params;
+
+        // Access check
+        const member = await prisma.workspaceMember.findUnique({
+            where: { workspaceId_userId: { workspaceId: id, userId: req.user.sub } }
+        });
+        if (!member) return res.status(403).json({ error: "Access denied" });
+
+        const activities = await prisma.workspaceActivity.findMany({
+            where: { workspaceId: id },
+            orderBy: { createdAt: 'desc' },
+            take: 50,
+            include: {
+                user: { select: { id: true, email: true } }
+            }
+        });
+
+        res.json(activities);
+    } catch (err) {
+        next(err);
+    }
+});
+
 
 // Join Doc
 app.post("/docs/:docId/join", auth, async (req, res, next) => {

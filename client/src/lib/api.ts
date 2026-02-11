@@ -161,6 +161,23 @@ export const api = {
             headers: { Authorization: `Bearer ${token}` }
         });
         return await response.json();
+    },
+    export: async (id: string) => {
+      const token = localStorage.getItem("token");
+      const response = await fetch(`${API_URL}/workspaces/${id}/export`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!response.ok) throw new Error("Failed to export project");
+      return response.blob();
+    },
+    activity: async (id: string) => {
+      const token = localStorage.getItem("token");
+      const response = await fetch(`${API_URL}/workspaces/${id}/activity`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Failed to fetch activity");
+      return data;
     }
   },
   files: {
@@ -219,6 +236,38 @@ export const api = {
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || "Failed to delete file");
         return data;
+    },
+    getVersions: async (fileId: string) => {
+      const token = localStorage.getItem("token");
+      const response = await fetch(`${API_URL}/files/${fileId}/versions`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Failed to fetch versions");
+      return data;
+    },
+    getVersion: async (versionId: string) => {
+      const token = localStorage.getItem("token");
+      const response = await fetch(`${API_URL}/file-versions/${versionId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Failed to fetch version");
+      return data;
+    },
+    restore: async (fileId: string, versionId: string) => {
+      const token = localStorage.getItem("token");
+      const response = await fetch(`${API_URL}/files/${fileId}/restore`, {
+        method: "POST",
+        headers: { 
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}` 
+        },
+        body: JSON.stringify({ versionId }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Failed to restore version");
+      return data;
     }
   }
 };

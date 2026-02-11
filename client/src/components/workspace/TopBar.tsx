@@ -7,6 +7,11 @@ import {
   ChevronDown,
   PanelLeftClose,
   PanelLeft,
+  Clock,
+  Check,
+  Cloud,
+  AlertCircle,
+  Download
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -22,8 +27,9 @@ import {
 } from "@/components/ui/tooltip";
 import Logo from "@/components/Logo";
 import { useToast } from "@/hooks/use-toast";
+import { formatDistanceToNow } from "date-fns";
 
-const LANGUAGES = ["TypeScript", "JavaScript", "Python", "Go", "Rust", "HTML", "CSS", "JSON"];
+const LANGUAGES = ["TypeScript", "JavaScript", "Python", "Go", "Rust", "HTML", "CSS", "JSON", "Markdown", "SQL"];
 
 interface TopBarProps {
   workspaceId: string;
@@ -33,6 +39,10 @@ interface TopBarProps {
   onShare: () => void;
   onToggleSidebar: () => void;
   sidebarOpen: boolean;
+  saveStatus: "saved" | "saving" | "error";
+  lastSavedAt: Date | null;
+  onShowHistory: () => void;
+  onExport: () => void;
 }
 
 const TopBar = ({
@@ -43,6 +53,10 @@ const TopBar = ({
   onShare,
   onToggleSidebar,
   sidebarOpen,
+  saveStatus,
+  lastSavedAt,
+  onShowHistory,
+  onExport
 }: TopBarProps) => {
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -76,14 +90,40 @@ const TopBar = ({
         </button>
       </div>
 
-      {/* Center */}
-      <div className="flex items-center gap-2 text-sm text-foreground">
-        <span className="font-medium">{activeFile}</span>
-        <span className="h-1.5 w-1.5 rounded-full bg-primary" title="Unsaved changes" />
+      {/* Center - Save Status */}
+      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+        <span className="font-medium text-foreground">{activeFile}</span>
+        {activeFile && (
+            <div className="flex items-center gap-1.5 pl-2 border-l border-border/50">
+                {saveStatus === "saving" && (
+                    <>
+                        <Cloud className="h-3 w-3 animate-pulse text-yellow-500" />
+                        <span>Saving...</span>
+                    </>
+                )}
+                {saveStatus === "saved" && (
+                    <>
+                        <Check className="h-3 w-3 text-green-500" />
+                        <span>Saved {lastSavedAt ? formatDistanceToNow(lastSavedAt, { addSuffix: true }) : ""}</span>
+                    </>
+                )}
+                {saveStatus === "error" && (
+                    <>
+                        <AlertCircle className="h-3 w-3 text-red-500" />
+                        <span className="text-red-500">Save failed</span>
+                    </>
+                )}
+            </div>
+        )}
       </div>
 
       {/* Right */}
       <div className="flex items-center gap-1">
+        <Button variant="ghost" size="sm" className="h-7 gap-1.5 text-xs text-muted-foreground hover:text-foreground" onClick={onShowHistory}>
+            <Clock className="h-3.5 w-3.5" />
+            History
+        </Button>
+
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs text-muted-foreground">

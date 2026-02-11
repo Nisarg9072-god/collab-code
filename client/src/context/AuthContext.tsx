@@ -37,7 +37,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const userData = await api.auth.me();
       setUser(userData);
     } catch (error) {
-      console.error("Auth check failed:", error);
+      // Token is likely invalid or expired; clear it and log out silently
       localStorage.removeItem("token");
       setUser(null);
     } finally {

@@ -1,15 +1,18 @@
 import { useState, useEffect } from "react";
 import { useParams } from "react-router-dom";
+import { formatDistanceToNow } from "date-fns";
 import TopBar from "@/components/workspace/TopBar";
 import SidePanel from "@/components/workspace/SidePanel";
 import CodeEditor from "@/components/workspace/CodeEditor";
 import StatusBar from "@/components/workspace/StatusBar";
 import ShareModal from "@/components/workspace/ShareModal";
+import VersionHistory from "@/components/workspace/VersionHistory";
 import { api } from "@/lib/api";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/hooks/use-toast";
+import { FileText } from "lucide-react";
 
 export type ConnectionStatus = "connected" | "reconnecting" | "offline";
 
@@ -34,6 +37,14 @@ const WorkspaceEditor = () => {
   const [code, setCode] = useState("");
   const [loading, setLoading] = useState(true);
 
+  // Version History & Auto-save State
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<"saved" | "saving" | "error">("saved");
+  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
+
+  // Activity State
+  const [activity, setActivity] = useState<{ message: string; time: string }[]>([]);
+
   // Create File State
   const [createOpen, setCreateOpen] = useState(false);
   const [newFileName, setNewFileName] = useState("");
@@ -42,18 +53,41 @@ const WorkspaceEditor = () => {
     { name: "You", status: "online" as const },
   ];
 
-  // Fetch files
+  // Fetch files and activity
   useEffect(() => {
     if (id) {
         setLoading(true);
-        api.files.list(id).then(fetchedFiles => {
+        Promise.all([
+            api.files.list(id),
+            api.workspaces.activity(id)
+        ]).then(([fetchedFiles, fetchedActivity]) => {
             setFiles(fetchedFiles);
             if (fetchedFiles.length > 0) {
                 setActiveFileId(fetchedFiles[0].id);
             }
+            
+            // Process activity
+            const processedActivity = fetchedActivity.map((a: any) => {
+                let actionText = a.actionType.replace(/_/g, ' ').toLowerCase();
+                // Simple formatting
+                if (a.actionType === 'FILE_UPDATED') actionText = 'updated file';
+                if (a.actionType === 'FILE_CREATED') actionText = 'created file';
+                if (a.actionType === 'FILE_DELETED') actionText = 'deleted file';
+                if (a.actionType === 'FILE_RESTORED') actionText = 'restored file';
+                
+                const fileName = a.metadata?.fileName || 'a file';
+                const userEmail = a.user?.email || 'Unknown user';
+                
+                return {
+                    message: `${userEmail} ${actionText} ${fileName}`,
+                    time: formatDistanceToNow(new Date(a.createdAt), { addSuffix: true })
+                };
+            });
+            setActivity(processedActivity);
+
         }).catch(err => {
             console.error(err);
-            toast({ variant: "destructive", title: "Error", description: "Failed to load files" });
+            toast({ variant: "destructive", title: "Error", description: "Failed to load workspace data" });
         }).finally(() => setLoading(false));
     }
   }, [id]);
@@ -90,17 +124,65 @@ const WorkspaceEditor = () => {
           if (activeFileId) {
               const file = files.find(f => f.id === activeFileId);
               if (file && file.content !== code) {
+                  setSaveStatus("saving");
                   // Optimistic update
                   setFiles(prev => prev.map(f => f.id === activeFileId ? { ...f, content: code } : f));
                   
-                  api.files.update(activeFileId, { content: code }).catch(err => {
-                      console.error("Auto-save failed", err);
-                  });
+                  api.files.update(activeFileId, { content: code })
+                    .then(() => {
+                        setSaveStatus("saved");
+                        setLastSavedAt(new Date());
+                    })
+                    .catch(err => {
+                        console.error("Auto-save failed", err);
+                        setSaveStatus("error");
+                        toast({ variant: "destructive", title: "Save Failed", description: "Your changes could not be saved." });
+                    });
               }
           }
       }, 1000);
       return () => clearTimeout(timeout);
   }, [code, activeFileId]);
+
+  const handleRestoreVersion = async (versionId: string) => {
+      if (!activeFileId || !id) return;
+      // The API restores the content and creates a new version
+      // We need to update our local state with the restored content
+      // We can fetch the restored file content or just assume the version content is now the file content
+      // But best to fetch the updated file to be sure
+      const updatedFile = await api.files.restore(activeFileId, versionId);
+      // Assuming updatedFile contains the content
+      // If the API returns the file object with content:
+      if (updatedFile && updatedFile.content) {
+          setCode(updatedFile.content);
+          setFiles(prev => prev.map(f => f.id === activeFileId ? { ...f, content: updatedFile.content } : f));
+          setSaveStatus("saved");
+          setLastSavedAt(new Date());
+      } else {
+          // Fallback: fetch the file again
+          const f = await api.files.get(activeFileId);
+          setCode(f.content);
+          setFiles(prev => prev.map(file => file.id === activeFileId ? { ...file, content: f.content } : file));
+      }
+
+      // Refresh activity
+      api.workspaces.activity(id).then(fetchedActivity => {
+         const processedActivity = fetchedActivity.map((a: any) => {
+            let actionText = a.actionType.replace(/_/g, ' ').toLowerCase();
+            if (a.actionType === 'FILE_UPDATED') actionText = 'updated file';
+            if (a.actionType === 'FILE_CREATED') actionText = 'created file';
+            if (a.actionType === 'FILE_DELETED') actionText = 'deleted file';
+            if (a.actionType === 'FILE_RESTORED') actionText = 'restored file';
+            const fileName = a.metadata?.fileName || 'a file';
+            const userEmail = a.user?.email || 'Unknown user';
+            return {
+                message: `${userEmail} ${actionText} ${fileName}`,
+                time: formatDistanceToNow(new Date(a.createdAt), { addSuffix: true })
+            };
+        });
+        setActivity(processedActivity);
+      });
+  };
 
   const handleCreateFile = async () => {
       if (!id || !newFileName) return;
@@ -111,8 +193,44 @@ const WorkspaceEditor = () => {
           setCreateOpen(false);
           setNewFileName("");
           toast({ title: "Success", description: "File created" });
+          // Refresh activity
+          api.workspaces.activity(id).then(fetchedActivity => {
+             const processedActivity = fetchedActivity.map((a: any) => {
+                let actionText = a.actionType.replace(/_/g, ' ').toLowerCase();
+                if (a.actionType === 'FILE_UPDATED') actionText = 'updated file';
+                if (a.actionType === 'FILE_CREATED') actionText = 'created file';
+                if (a.actionType === 'FILE_DELETED') actionText = 'deleted file';
+                if (a.actionType === 'FILE_RESTORED') actionText = 'restored file';
+                const fileName = a.metadata?.fileName || 'a file';
+                const userEmail = a.user?.email || 'Unknown user';
+                return {
+                    message: `${userEmail} ${actionText} ${fileName}`,
+                    time: formatDistanceToNow(new Date(a.createdAt), { addSuffix: true })
+                };
+            });
+            setActivity(processedActivity);
+          });
       } catch (err: any) {
           toast({ variant: "destructive", title: "Error", description: err.message });
+      }
+  };
+
+  const handleExport = async () => {
+      if (!id) return;
+      try {
+          const blob = await api.workspaces.export(id);
+          const url = window.URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `workspace-${id}-export.zip`;
+          document.body.appendChild(a);
+          a.click();
+          window.URL.revokeObjectURL(url);
+          document.body.removeChild(a);
+          toast({ title: "Success", description: "Project exported successfully" });
+      } catch (err) {
+          console.error(err);
+          toast({ variant: "destructive", title: "Export Failed", description: "Could not export project." });
       }
   };
 
@@ -128,6 +246,10 @@ const WorkspaceEditor = () => {
         onShare={() => setShareOpen(true)}
         onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
         sidebarOpen={sidebarOpen}
+        saveStatus={saveStatus}
+        lastSavedAt={lastSavedAt}
+        onShowHistory={() => activeFileId && setHistoryOpen(true)}
+        onExport={handleExport}
       />
 
       <div className="flex flex-1 overflow-hidden">
@@ -135,24 +257,39 @@ const WorkspaceEditor = () => {
           <SidePanel
             files={files.map(f => ({ id: f.id, name: f.name, active: f.id === activeFileId }))}
             participants={MOCK_PARTICIPANTS}
-            activity={[]} 
+            activity={activity} 
             activeFileId={activeFileId}
             onFileSelect={setActiveFileId}
             onFileCreate={() => setCreateOpen(true)}
           />
         )}
-        <CodeEditor
-          code={code}
-          onChange={setCode}
-          collaborators={MOCK_PARTICIPANTS.filter(p => p.name !== "You")}
-          connectionStatus={connectionStatus}
-        />
+        {files.length === 0 ? (
+            <div className="flex flex-1 items-center justify-center flex-col gap-4 text-muted-foreground bg-[#1e1e1e]">
+                <FileText className="h-12 w-12 opacity-20" />
+                <p>No files in this workspace</p>
+                <Button onClick={() => setCreateOpen(true)} variant="secondary">Create File</Button>
+            </div>
+        ) : !activeFileId ? (
+            <div className="flex flex-1 items-center justify-center text-muted-foreground bg-[#1e1e1e]">
+                <p>Select a file to edit</p>
+            </div>
+        ) : (
+            <CodeEditor
+              code={code}
+              language={language}
+              onChange={setCode}
+              collaborators={MOCK_PARTICIPANTS.filter(p => p.name !== "You")}
+              connectionStatus={connectionStatus}
+            />
+        )}
       </div>
 
       <StatusBar
         connectionStatus={connectionStatus}
         language={language}
-        cursorPosition={{ line: 1, col: 1 }} 
+        cursorLine={1}
+        cursorCol={1}
+        lineCount={code.split('\n').length}
       />
 
       {/* Create File Modal */}
@@ -175,6 +312,13 @@ const WorkspaceEditor = () => {
             </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <VersionHistory 
+        open={historyOpen}
+        onClose={() => setHistoryOpen(false)}
+        fileId={activeFileId}
+        onRestore={handleRestoreVersion}
+      />
     </div>
   );
 };
