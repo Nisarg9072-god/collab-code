@@ -12,10 +12,13 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { User, LogOut, LayoutDashboard } from "lucide-react";
+import { Sun, Moon } from "lucide-react";
+import { useTheme } from "next-themes";
 
 const Navbar = () => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const { theme, setTheme } = useTheme();
 
   const scrollToSection = (id: string) => {
     const element = document.getElementById(id);
@@ -63,6 +66,15 @@ const Navbar = () => {
           </div>
 
           <div className="flex items-center gap-4">
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Toggle theme"
+              title={theme === "dark" ? "Switch to light" : "Switch to dark"}
+              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+            >
+              {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+            </Button>
             {user ? (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>

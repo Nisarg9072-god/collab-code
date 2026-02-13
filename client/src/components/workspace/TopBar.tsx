@@ -14,6 +14,8 @@ import {
   Download
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Sun, Moon } from "lucide-react";
+import { useTheme } from "next-themes";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -36,6 +38,7 @@ interface TopBarProps {
   activeFile: string;
   language: string;
   onLanguageChange: (lang: string) => void;
+  onRun?: () => void;
   onShare: () => void;
   onToggleSidebar: () => void;
   sidebarOpen: boolean;
@@ -50,6 +53,7 @@ const TopBar = ({
   activeFile,
   language,
   onLanguageChange,
+  onRun,
   onShare,
   onToggleSidebar,
   sidebarOpen,
@@ -60,6 +64,7 @@ const TopBar = ({
 }: TopBarProps) => {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { theme, setTheme } = useTheme();
 
   const copyWorkspaceId = () => {
     navigator.clipboard.writeText(workspaceId);
@@ -119,9 +124,21 @@ const TopBar = ({
 
       {/* Right */}
       <div className="flex items-center gap-1">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7"
+          title={theme === "dark" ? "Switch to light" : "Switch to dark"}
+          onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+        >
+          {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+        </Button>
         <Button variant="ghost" size="sm" className="h-7 gap-1.5 text-xs text-muted-foreground hover:text-foreground" onClick={onShowHistory}>
             <Clock className="h-3.5 w-3.5" />
             History
+        </Button>
+        <Button variant="ghost" size="sm" className="h-7 gap-1.5 text-xs text-muted-foreground hover:text-foreground" onClick={onRun}>
+            Run
         </Button>
 
         <DropdownMenu>

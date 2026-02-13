@@ -2,12 +2,15 @@ import express from "express";
 import cors from "cors";
 import { PrismaClient, Role } from "@prisma/client";
 import jwt from "jsonwebtoken";
-import bcrypt from "bcrypt";
+import bcrypt from "bcryptjs";
 import { z, ZodError } from "zod";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import pinoHttp from "pino-http";
 import AdmZip from "adm-zip";
+import fs from "fs";
+import path from "path";
+import { spawn } from "child_process";
 
 /**
  * @swagger
@@ -587,7 +590,9 @@ app.post("/api/workspaces/:id/invite", auth, async (req, res, next) => {
         }
     });
 
-    const inviteLink = `${req.protocol}://${req.get('host').replace('3001', '5173')}/workspace/${id}`;
+    const host = req.get('host') || 'localhost:5000';
+    const frontendHost = host.replace('5000', '8080');
+    const inviteLink = `${req.protocol}://${frontendHost}/workspace/${id}`;
 
     res.json({ message: "User added to workspace", link: inviteLink });
 
@@ -871,7 +876,7 @@ app.get("/api/files/:id", auth, async (req, res, next) => {
 app.put("/api/files/:id", auth, async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { content, name } = req.body;
+    const { content, name, language } = req.body;
 
     const file = await prisma.projectFile.findUnique({ where: { id } });
     if (!file) return res.status(404).json({ error: "File not found" });
@@ -900,6 +905,7 @@ app.put("/api/files/:id", auth, async (req, res, next) => {
       data: {
         content: content !== undefined ? content : undefined,
         name: name !== undefined ? name : undefined,
+        language: language !== undefined ? language : undefined,
       }
     });
 
@@ -918,6 +924,15 @@ app.put("/api/files/:id", auth, async (req, res, next) => {
                 userId: req.user.sub,
                 actionType: "FILE_RENAMED",
                 metadata: { oldName: file.name, newName: name, fileId: id }
+            }
+        });
+    } else if (language !== undefined && language !== file.language) {
+         await prisma.workspaceActivity.create({
+            data: {
+                workspaceId: file.workspaceId,
+                userId: req.user.sub,
+                actionType: "FILE_LANGUAGE_CHANGED",
+                metadata: { fileName: file.name, fileId: id, oldLanguage: file.language, newLanguage: language }
             }
         });
     } else if (content !== undefined) {
@@ -1183,6 +1198,155 @@ app.post("/docs/:docId/join", auth, async (req, res, next) => {
   }
 });
 
+app.post("/api/run", auth, async (req, res, next) => {
+  try {
+    const { fileId, code, language } = req.body;
+    let content = code;
+    let lang = language;
+    let workspaceId = null;
+    if (fileId) {
+      const file = await prisma.projectFile.findUnique({
+        where: { id: fileId },
+        select: { id: true, content: true, language: true, workspaceId: true },
+      });
+      if (!file) return res.status(404).json({ error: "File not found" });
+      const member = await prisma.workspaceMember.findUnique({
+        where: { workspaceId_userId: { workspaceId: file.workspaceId, userId: req.user.sub } }
+      });
+      if (!member) return res.status(403).json({ error: "Access denied" });
+      content = file.content;
+      // Prefer explicitly provided language from client; fallback to file record
+      lang = language || file.language;
+      workspaceId = file.workspaceId;
+    }
+    if (!content) return res.status(400).json({ error: "No code provided" });
+    const normalized = (lang || "").toLowerCase();
+    const tmpDir = path.join(process.cwd(), "runner_tmp");
+    if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
+    let tmpFile, command, args, prelude = "";
+    if (normalized === "javascript" || normalized === "js" || normalized === "") {
+      tmpFile = path.join(tmpDir, `run_${Date.now()}_${Math.random().toString(36).slice(2)}.js`);
+      prelude = "global.require = () => { throw new Error('require disabled') }; global.process.exit = () => { throw new Error('exit disabled') };";
+      command = process.execPath;
+      args = [tmpFile];
+    } else if (normalized === "python" || normalized === "py") {
+      tmpFile = path.join(tmpDir, `run_${Date.now()}_${Math.random().toString(36).slice(2)}.py`);
+      command = process.env.PYTHON_PATH || "python";
+      args = [tmpFile];
+      const rawStdinForPrelude = typeof req.body.stdin === "string" ? req.body.stdin : null;
+      const stdinForPrelude = rawStdinForPrelude !== null ? (rawStdinForPrelude.endsWith("\n") ? rawStdinForPrelude : rawStdinForPrelude + "\n") : null;
+      if (stdinForPrelude !== null) {
+        prelude = `import builtins, io\n_data = ${JSON.stringify(stdinForPrelude)}\n_stream = io.StringIO(_data)\n_bi_input = builtins.input\nbuiltins.input = lambda prompt=None: (print(prompt, end='') if prompt is not None else None) or _stream.readline().rstrip(\"\\n\")\n`;
+      }
+    } else if (normalized === "go") {
+      tmpFile = path.join(tmpDir, `run_${Date.now()}_${Math.random().toString(36).slice(2)}.go`);
+      command = "go";
+      args = ["run", tmpFile];
+    } else {
+      return res.status(400).json({ error: `Language ${lang} not supported` });
+    }
+    let fileText = (prelude ? prelude + "\n" : "") + content;
+    if (normalized === "python" || normalized === "py") {
+      const pre = prelude ? prelude + "\n" : "";
+      fileText = `${pre}code = ${JSON.stringify(content)}\nexec(code, {})`;
+    }
+    fs.writeFileSync(tmpFile, fileText, "utf8");
+    const start = Date.now();
+    const child = spawn(command, args, { stdio: ["pipe", "pipe", "pipe"] });
+    let stdout = "";
+    let stderr = "";
+    const timeoutMs = 5000;
+    const timer = setTimeout(() => {
+      try { child.kill(); } catch {}
+    }, timeoutMs);
+    // Write stdin if provided (ensure trailing newline for line-based input)
+    const rawStdin = typeof req.body.stdin === "string" ? req.body.stdin : null;
+    const stdinText = rawStdin !== null ? (rawStdin.endsWith("\n") ? rawStdin : rawStdin + "\n") : null;
+    if (stdinText !== null) {
+      try {
+        child.stdin.write(stdinText);
+      } catch {}
+    }
+    try { child.stdin.end(); } catch {}
+    child.stdout.on("data", d => { stdout += d.toString(); });
+    child.stderr.on("data", d => { stderr += d.toString(); });
+    child.on("close", code => {
+      clearTimeout(timer);
+      try { fs.unlinkSync(tmpFile); } catch {}
+      res.json({ stdout, stderr, exitCode: code, durationMs: Date.now() - start, workspaceId });
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Judge0 Proxy Run (External Execution)
+app.post("/api/judge0/run", auth, async (req, res, next) => {
+  try {
+    const API_KEY = process.env.RAPIDAPI_KEY;
+    const HOST = "judge0-ce.p.rapidapi.com";
+    const URL = "https://judge0-ce.p.rapidapi.com/submissions?base64_encoded=false&wait=true";
+    if (!API_KEY) {
+      return res.status(500).json({ error: "RapidAPI key not configured (RAPIDAPI_KEY)" });
+    }
+    const { source_code, language_id, stdin, fileId } = req.body || {};
+    let code = source_code;
+    let langId = language_id;
+    if (!code && fileId) {
+      const file = await prisma.projectFile.findUnique({
+        where: { id: fileId },
+        select: { id: true, content: true, language: true, workspaceId: true, name: true },
+      });
+      if (!file) return res.status(404).json({ error: "File not found" });
+      const member = await prisma.workspaceMember.findUnique({
+        where: { workspaceId_userId: { workspaceId: file.workspaceId, userId: req.user.sub } }
+      });
+      if (!member) return res.status(403).json({ error: "Access denied" });
+      code = file.content || "";
+      const map = {
+        "Python": 71,
+        "JavaScript": 63,
+        "TypeScript": 74,
+        "C++": 54,
+        "C": 50,
+        "Java": 62,
+        "Go": 60,
+        "Rust": 73
+      };
+      langId = language_id || map[file.language] || 63; // default JS
+    }
+    if (!code || !langId) {
+      return res.status(400).json({ error: "source_code and language_id required" });
+    }
+    const payload = {
+      source_code: code,
+      language_id: langId,
+      stdin: typeof stdin === "string" ? stdin : ""
+    };
+    const r = await fetch(URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-RapidAPI-Key": API_KEY,
+        "X-RapidAPI-Host": HOST
+      },
+      body: JSON.stringify(payload)
+    });
+    const data = await r.json();
+    const durationMs = data?.time ? Math.round(parseFloat(data.time) * 1000) : undefined;
+    const stderr = data?.stderr || data?.compile_output || "";
+    const exitCode = data?.status?.id === 3 ? 0 : (data?.exit_code ?? data?.status?.id ?? -1);
+    return res.json({
+      stdout: data?.stdout || "",
+      stderr,
+      exitCode,
+      durationMs
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // Error handling middleware
 app.use((err, req, res, next) => {
   if (err instanceof ZodError) {
@@ -1195,6 +1359,11 @@ app.use((err, req, res, next) => {
   }
 
   req.log.error(err); // Use pino logger attached to req
+  console.error("Unhandled error:", err && err.stack ? err.stack : err);
+  if (err && (err.statusCode || err.status)) {
+    const status = err.statusCode || err.status;
+    return res.status(status).json({ error: err.message || "error" });
+  }
   res.status(500).json({ error: "server error" });
 });
 

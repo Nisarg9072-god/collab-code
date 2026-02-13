@@ -3,13 +3,13 @@ import { useParams, useNavigate } from "react-router-dom";
 import { api } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
-import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/UI/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/UI/tabs";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Badge } from "@/components/UI/badge";
+import { Skeleton } from "@/components/UI/skeleton";
 import { toast } from "@/hooks/use-toast";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/UI/dialog";
 import { Input } from "@/components/ui/input";
 import { ArrowLeft, Users, Settings, Layout, Trash2, LogOut, Code, Copy, Check, Shield, ShieldAlert, Loader2, Edit2, Activity, FileText, Plus } from "lucide-react";
 
@@ -207,16 +207,16 @@ export default function WorkspaceDetail() {
             </div>
             
             {/* Header Skeleton */}
-            <header className="z-10 border-b border-white/10 bg-black/20 backdrop-blur-xl sticky top-0">
+            <header className="z-10 border-b border-border bg-card/60 backdrop-blur-xl sticky top-0">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
                     <div className="flex items-center gap-4">
-                        <Skeleton className="h-10 w-10 rounded-md bg-white/5" />
+                        <Skeleton className="h-10 w-10 rounded-md bg-muted/40" />
                         <div className="space-y-2">
-                            <Skeleton className="h-6 w-48 bg-white/5" />
-                            <Skeleton className="h-3 w-32 bg-white/5" />
+                            <Skeleton className="h-6 w-48 bg-muted/40" />
+                            <Skeleton className="h-3 w-32 bg-muted/40" />
                         </div>
                     </div>
-                    <Skeleton className="h-10 w-24 bg-white/5" />
+                    <Skeleton className="h-10 w-24 bg-muted/40" />
                 </div>
             </header>
 
@@ -224,21 +224,21 @@ export default function WorkspaceDetail() {
             <main className="flex-1 relative z-10 p-6 md:p-8">
                 <div className="max-w-7xl mx-auto space-y-6">
                     {/* Tabs Skeleton */}
-                    <Skeleton className="h-10 w-64 bg-white/5" />
+                    <Skeleton className="h-10 w-64 bg-muted/40" />
                     
                     {/* Overview Cards Skeleton */}
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                         {[1, 2, 3].map((i) => (
-                            <Skeleton key={i} className="h-32 rounded-xl bg-white/5" />
+                            <Skeleton key={i} className="h-32 rounded-xl bg-muted/40" />
                         ))}
                     </div>
 
                     {/* Quick Actions Skeleton */}
                     <div className="mt-8 space-y-4">
-                        <Skeleton className="h-8 w-40 bg-white/5" />
+                        <Skeleton className="h-8 w-40 bg-muted/40" />
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                             {[1, 2].map((i) => (
-                                <Skeleton key={i} className="h-24 rounded-xl bg-white/5" />
+                                <Skeleton key={i} className="h-24 rounded-xl bg-muted/40" />
                             ))}
                         </div>
                     </div>
@@ -260,28 +260,28 @@ export default function WorkspaceDetail() {
       </div>
 
       {/* Header */}
-      <header className="z-10 border-b border-white/10 bg-black/20 backdrop-blur-xl sticky top-0">
+      <header className="z-10 border-b border-border bg-card/60 backdrop-blur-xl sticky top-0">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
             <div className="flex items-center gap-4">
-                <Button variant="ghost" size="icon" onClick={() => navigate("/dashboard")} className="text-muted-foreground hover:text-white">
+                <Button variant="ghost" size="icon" onClick={() => navigate("/dashboard")} className="text-muted-foreground hover:text-foreground">
                     <ArrowLeft className="h-5 w-5" />
                 </Button>
                 <div>
-                    <h1 className="text-xl font-bold text-white flex items-center gap-2">
+                    <h1 className="text-xl font-bold text-foreground flex items-center gap-2">
                         {workspace.name}
                         {isOwnerOrAdmin && (
                             <Dialog open={editOpen} onOpenChange={setEditOpen}>
                                 <DialogTrigger asChild>
-                                    <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-white">
+                                    <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-foreground">
                                         <Edit2 className="h-3 w-3" />
                                     </Button>
                                 </DialogTrigger>
-                                <DialogContent className="bg-black/90 backdrop-blur-2xl border-white/10">
+                                <DialogContent className="bg-background/95 backdrop-blur-2xl border-border">
                                     <DialogHeader>
                                         <DialogTitle>Edit Workspace Name</DialogTitle>
                                     </DialogHeader>
                                     <div className="space-y-4 py-4">
-                                        <Input value={newName} onChange={(e) => setNewName(e.target.value)} className="bg-white/5 border-white/10" />
+                                        <Input value={newName} onChange={(e) => setNewName(e.target.value)} className="bg-background border-border" />
                                         <Button onClick={handleUpdateName} className="w-full bg-teal-500 hover:bg-teal-600">Save</Button>
                                     </div>
                                 </DialogContent>
@@ -311,12 +311,12 @@ export default function WorkspaceDetail() {
                 {/* Invite Button */}
                 <Dialog>
                     <DialogTrigger asChild>
-                        <Button className="bg-white/10 hover:bg-white/20 text-white border border-white/10">
+                        <Button className="bg-muted/40 hover:bg-muted/60 text-foreground border border-border">
                             <Users className="mr-2 h-4 w-4" />
                             Invite
                         </Button>
                     </DialogTrigger>
-                    <DialogContent className="bg-black/90 backdrop-blur-2xl border-white/10">
+                    <DialogContent className="bg-background/95 backdrop-blur-2xl border-border">
                         <DialogHeader>
                             <DialogTitle>Invite to {workspace.name}</DialogTitle>
                         </DialogHeader>
@@ -325,7 +325,7 @@ export default function WorkspaceDetail() {
                                 placeholder="Email address" 
                                 value={inviteEmail} 
                                 onChange={(e) => setInviteEmail(e.target.value)} 
-                                className="bg-white/5 border-white/10"
+                                className="bg-background border-border"
                             />
                             <Button type="submit" disabled={inviting} className="w-full bg-teal-500 hover:bg-teal-600">
                                 {inviting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Invite & Copy Link"}
@@ -341,32 +341,32 @@ export default function WorkspaceDetail() {
       <main className="flex-1 relative z-10 p-6 md:p-8 overflow-y-auto">
         <div className="max-w-7xl mx-auto">
             <Tabs defaultValue="overview" className="space-y-6">
-                <TabsList className="bg-white/5 border border-white/10 p-1">
-                    <TabsTrigger value="overview" className="data-[state=active]:bg-teal-500 data-[state=active]:text-white">Overview</TabsTrigger>
-                    <TabsTrigger value="members" className="data-[state=active]:bg-teal-500 data-[state=active]:text-white">Members</TabsTrigger>
-                    {isOwnerOrAdmin && <TabsTrigger value="settings" className="data-[state=active]:bg-teal-500 data-[state=active]:text-white">Settings</TabsTrigger>}
+                <TabsList className="bg-muted/50 border border-border p-1">
+                    <TabsTrigger value="overview" className="data-[state=active]:bg-teal-500 data-[state=active]:text-foreground">Overview</TabsTrigger>
+                    <TabsTrigger value="members" className="data-[state=active]:bg-teal-500 data-[state=active]:text-foreground">Members</TabsTrigger>
+                    {isOwnerOrAdmin && <TabsTrigger value="settings" className="data-[state=active]:bg-teal-500 data-[state=active]:text-foreground">Settings</TabsTrigger>}
                 </TabsList>
 
                 {/* Overview Tab */}
                 <TabsContent value="overview" className="space-y-6 animate-in fade-in slide-in-from-bottom-2">
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        <Card className="bg-white/5 border-white/10 backdrop-blur-md">
+                        <Card className="bg-card border-border backdrop-blur-md">
                             <CardHeader className="pb-2">
                                 <CardTitle className="text-sm font-medium text-muted-foreground">Total Files</CardTitle>
                             </CardHeader>
                             <CardContent>
-                                <div className="text-2xl font-bold text-white">{files.length}</div>
+                                <div className="text-2xl font-bold text-foreground">{files.length}</div>
                             </CardContent>
                         </Card>
-                        <Card className="bg-white/5 border-white/10 backdrop-blur-md">
+                        <Card className="bg-card border-border backdrop-blur-md">
                             <CardHeader className="pb-2">
                                 <CardTitle className="text-sm font-medium text-muted-foreground">Collaborators</CardTitle>
                             </CardHeader>
                             <CardContent>
-                                <div className="text-2xl font-bold text-white">{workspace.members.length}</div>
+                                <div className="text-2xl font-bold text-foreground">{workspace.members.length}</div>
                             </CardContent>
                         </Card>
-                        <Card className="bg-white/5 border-white/10 backdrop-blur-md">
+                        <Card className="bg-card border-border backdrop-blur-md">
                             <CardHeader className="pb-2">
                                 <CardTitle className="text-sm font-medium text-muted-foreground">Active Now</CardTitle>
                             </CardHeader>
@@ -377,24 +377,24 @@ export default function WorkspaceDetail() {
                     </div>
 
                     {/* File Browser */}
-                    <Card className="bg-white/5 border-white/10 backdrop-blur-md overflow-hidden">
-                        <CardHeader className="flex flex-row items-center justify-between border-b border-white/10 bg-white/5 py-3">
+                    <Card className="bg-card border-border backdrop-blur-md overflow-hidden">
+                        <CardHeader className="flex flex-row items-center justify-between border-b border-border bg-card py-3">
                             <div className="flex items-center gap-2">
                                 <Code className="h-4 w-4 text-muted-foreground" />
-                                <span className="text-sm font-medium text-white">Repository Files</span>
+                                <span className="text-sm font-medium text-foreground">Repository Files</span>
                             </div>
-                            <Button size="sm" variant="ghost" className="h-8 text-xs hover:bg-white/10 hover:text-white" onClick={() => navigate(`/workspace/${id}/editor`)}>
+                            <Button size="sm" variant="ghost" className="h-8 text-xs hover:bg-muted/50 hover:text-foreground" onClick={() => navigate(`/workspace/${id}/editor`)}>
                                 <Plus className="mr-1 h-3 w-3" />
                                 New File
                             </Button>
                         </CardHeader>
-                        <div className="divide-y divide-white/5">
+                        <div className="divide-y divide-border">
                             {files.length === 0 ? (
                                 <div className="py-12 text-center">
-                                    <div className="mx-auto w-12 h-12 rounded-full bg-white/5 flex items-center justify-center mb-3">
+                                    <div className="mx-auto w-12 h-12 rounded-full bg-muted/40 flex items-center justify-center mb-3">
                                         <FileText className="h-6 w-6 text-muted-foreground" />
                                     </div>
-                                    <h3 className="text-sm font-medium text-white mb-1">No files yet</h3>
+                                    <h3 className="text-sm font-medium text-foreground mb-1">No files yet</h3>
                                     <p className="text-xs text-muted-foreground mb-4">Create your first file to start coding</p>
                                     <Button size="sm" className="bg-teal-500 hover:bg-teal-600 text-white" onClick={() => navigate(`/workspace/${id}/editor`)}>
                                         Open Editor
@@ -404,12 +404,12 @@ export default function WorkspaceDetail() {
                                 files.map((file) => (
                                     <div 
                                         key={file.id} 
-                                        className="flex items-center justify-between p-3 hover:bg-white/5 cursor-pointer transition-colors group"
+                                        className="flex items-center justify-between p-3 hover:bg-muted/50 cursor-pointer transition-colors group"
                                         onClick={() => navigate(`/workspace/${id}/editor`)}
                                     >
                                         <div className="flex items-center gap-3">
                                             <FileText className="h-4 w-4 text-teal-500" />
-                                            <span className="text-sm text-white font-mono">{file.name}</span>
+                                            <span className="text-sm text-foreground font-mono">{file.name}</span>
                                         </div>
                                         <div className="flex items-center gap-4 text-xs text-muted-foreground">
                                             <span>{file.language}</span>
@@ -422,14 +422,14 @@ export default function WorkspaceDetail() {
                     </Card>
 
                     {/* README Preview (Mock if real one doesn't exist) */}
-                    <Card className="bg-white/5 border-white/10 backdrop-blur-md">
-                        <CardHeader className="border-b border-white/10 bg-white/5 py-3">
+                    <Card className="bg-card border-border backdrop-blur-md">
+                        <CardHeader className="border-b border-border bg-card py-3">
                             <div className="flex items-center gap-2">
                                 <FileText className="h-4 w-4 text-muted-foreground" />
-                                <span className="text-sm font-medium text-white uppercase tracking-wider">README.md</span>
+                                <span className="text-sm font-medium text-foreground uppercase tracking-wider">README.md</span>
                             </div>
                         </CardHeader>
-                        <CardContent className="p-6 prose prose-invert max-w-none">
+                        <CardContent className="p-6 prose max-w-none">
                             <h1>Welcome to {workspace.name}</h1>
                             <p>This is your collaborative workspace. Use the editor to write code in real-time with your team.</p>
                             <h3>Getting Started</h3>
@@ -444,10 +444,10 @@ export default function WorkspaceDetail() {
 
                 {/* Members Tab */}
                 <TabsContent value="members" className="animate-in fade-in slide-in-from-bottom-2">
-                    <Card className="bg-white/5 border-white/10 backdrop-blur-md">
+                    <Card className="bg-card border-border backdrop-blur-md">
                         <CardHeader className="flex flex-row items-center justify-between">
                             <div>
-                                <CardTitle className="text-white">Team Members</CardTitle>
+                                <CardTitle className="text-foreground">Team Members</CardTitle>
                                 <CardDescription>Manage who has access to this workspace.</CardDescription>
                             </div>
                             <Dialog>
@@ -457,7 +457,7 @@ export default function WorkspaceDetail() {
                                         Invite New
                                     </Button>
                                 </DialogTrigger>
-                                <DialogContent className="bg-black/90 backdrop-blur-2xl border-white/10">
+                                <DialogContent className="bg-background/95 backdrop-blur-2xl border-border">
                                     <DialogHeader>
                                         <DialogTitle>Invite to {workspace.name}</DialogTitle>
                                     </DialogHeader>
@@ -466,7 +466,7 @@ export default function WorkspaceDetail() {
                                             placeholder="Email address" 
                                             value={inviteEmail} 
                                             onChange={(e) => setInviteEmail(e.target.value)} 
-                                            className="bg-white/5 border-white/10"
+                                            className="bg-background border-border"
                                         />
                                         <Button type="submit" disabled={inviting} className="w-full bg-teal-500 hover:bg-teal-600">
                                             {inviting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Invite & Copy Link"}
@@ -477,24 +477,24 @@ export default function WorkspaceDetail() {
                         </CardHeader>
                         <CardContent className="space-y-4">
                             {workspace.members.length === 1 ? (
-                                <div className="text-center py-12 border border-dashed border-white/10 rounded-xl bg-white/5">
+                                <div className="text-center py-12 border border-dashed border-border rounded-xl bg-muted/40">
                                     <div className="mx-auto w-12 h-12 rounded-full bg-teal-500/10 flex items-center justify-center mb-4">
                                         <Users className="h-6 w-6 text-teal-500" />
                                     </div>
-                                    <h3 className="text-lg font-medium text-white mb-2">It's just you here</h3>
+                                    <h3 className="text-lg font-medium text-foreground mb-2">It's just you here</h3>
                                     <p className="text-muted-foreground max-w-sm mx-auto mb-6">
                                         Workspaces are better with a team. Invite your colleagues to start collaborating.
                                     </p>
                                     {/* Member (You) Row */}
-                                    <div className="max-w-md mx-auto text-left bg-black/20 rounded-lg p-3 border border-white/5 mb-4">
+                                    <div className="max-w-md mx-auto text-left bg-muted/30 rounded-lg p-3 border border-border mb-4">
                                         <div className="flex items-center gap-3">
-                                            <Avatar className="h-8 w-8 border border-white/10">
+                                            <Avatar className="h-8 w-8 border border-border">
                                                 <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${workspace.members[0].user.email}`} />
                                                 <AvatarFallback>{workspace.members[0].user.email[0].toUpperCase()}</AvatarFallback>
                                             </Avatar>
                                             <div>
-                                                <p className="text-sm font-medium text-white">{workspace.members[0].user.email} (You)</p>
-                                                <Badge variant="outline" className="text-[10px] border-white/10 text-muted-foreground mt-1">
+                                                <p className="text-sm font-medium text-foreground">{workspace.members[0].user.email} (You)</p>
+                                                <Badge variant="outline" className="text-[10px] border-border text-muted-foreground mt-1">
                                                     {workspace.members[0].role}
                                                 </Badge>
                                             </div>
@@ -503,24 +503,24 @@ export default function WorkspaceDetail() {
                                 </div>
                             ) : (
                                 workspace.members.map((member) => (
-                                    <div key={member.id} className="flex items-center justify-between p-3 rounded-lg hover:bg-white/5 transition-colors border border-transparent hover:border-white/5">
+                                    <div key={member.id} className="flex items-center justify-between p-3 rounded-lg hover:bg-muted/50 transition-colors border border-transparent hover:border-border">
                                         <div className="flex items-center gap-3">
                                             <div className="relative">
-                                                <Avatar className="h-10 w-10 border border-white/10">
+                                                <Avatar className="h-10 w-10 border border-border">
                                                     <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${member.user.email}`} />
                                                     <AvatarFallback>{member.user.email[0].toUpperCase()}</AvatarFallback>
                                                 </Avatar>
                                                 {activeUserIds.includes(member.userId) && (
-                                                    <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-teal-500 border-2 border-black" title="Online" />
+                                                    <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-teal-500 border-2 border-background" title="Online" />
                                                 )}
                                             </div>
                                             <div>
-                                                <p className="text-sm font-medium text-white">
+                                                <p className="text-sm font-medium text-foreground">
                                                     {member.user.email}
                                                     {member.userId === user?.id && " (You)"}
                                                 </p>
                                                 <div className="flex items-center gap-2 mt-0.5">
-                                                    <Badge variant="outline" className="text-[10px] border-white/10 text-muted-foreground">
+                                                    <Badge variant="outline" className="text-[10px] border-border text-muted-foreground">
                                                         {member.role}
                                                     </Badge>
                                                     {activeUserIds.includes(member.userId) && (
@@ -534,13 +534,13 @@ export default function WorkspaceDetail() {
                                         {isOwnerOrAdmin && member.userId !== user?.id && (
                                             <DropdownMenu>
                                                 <DropdownMenuTrigger asChild>
-                                                    <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-white">
+                                                    <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground">
                                                         <Settings className="h-4 w-4" />
                                                     </Button>
                                                 </DropdownMenuTrigger>
-                                                <DropdownMenuContent align="end" className="bg-black/90 backdrop-blur-xl border-white/10">
+                                                <DropdownMenuContent align="end" className="bg-background/95 backdrop-blur-xl border-border">
                                                     <DropdownMenuLabel>Manage Access</DropdownMenuLabel>
-                                                    <DropdownMenuSeparator className="bg-white/10" />
+                                                    <DropdownMenuSeparator className="bg-border" />
                                                     <DropdownMenuItem onClick={() => handleRoleChange(member.userId, 'ADMIN')}>
                                                         Make Admin
                                                     </DropdownMenuItem>
@@ -550,7 +550,7 @@ export default function WorkspaceDetail() {
                                                     <DropdownMenuItem onClick={() => handleRoleChange(member.userId, 'VIEWER')}>
                                                         Make Viewer
                                                     </DropdownMenuItem>
-                                                    <DropdownMenuSeparator className="bg-white/10" />
+                                                    <DropdownMenuSeparator className="bg-border" />
                                                     <DropdownMenuItem 
                                                         className="text-red-400 focus:text-red-300 focus:bg-red-500/10"
                                                         onClick={() => handleRemoveMember(member.userId)}
@@ -571,29 +571,29 @@ export default function WorkspaceDetail() {
                 {/* Settings Tab */}
                 {isOwnerOrAdmin && (
                     <TabsContent value="settings" className="animate-in fade-in slide-in-from-bottom-2">
-                        <Card className="bg-white/5 border-white/10 backdrop-blur-md">
+                        <Card className="bg-card border-border backdrop-blur-md">
                             <CardHeader>
-                                <CardTitle className="text-white">Workspace Settings</CardTitle>
+                                <CardTitle className="text-foreground">Workspace Settings</CardTitle>
                                 <CardDescription>Manage workspace preferences and danger zone.</CardDescription>
                             </CardHeader>
                             <CardContent className="space-y-6">
                                 <div className="space-y-4">
                                     <div className="flex flex-col gap-2">
-                                        <label className="text-sm font-medium text-white">Workspace Name</label>
+                                        <label className="text-sm font-medium text-foreground">Workspace Name</label>
                                         <div className="flex gap-2">
-                                            <Input value={newName} onChange={(e) => setNewName(e.target.value)} className="bg-white/5 border-white/10" />
+                                            <Input value={newName} onChange={(e) => setNewName(e.target.value)} className="bg-background border-border" />
                                             <Button onClick={handleUpdateName} className="bg-teal-500 hover:bg-teal-600">Save</Button>
                                         </div>
                                     </div>
                                 </div>
 
-                                <div className="pt-6 border-t border-white/10">
+                                <div className="pt-6 border-t border-border">
                                     <h3 className="text-red-400 font-medium mb-2 flex items-center gap-2">
                                         <ShieldAlert className="h-4 w-4" /> Danger Zone
                                     </h3>
                                     <div className="p-4 rounded-lg border border-red-500/20 bg-red-500/5 flex items-center justify-between">
                                         <div>
-                                            <p className="text-white font-medium">Delete this workspace</p>
+                                            <p className="text-foreground font-medium">Delete this workspace</p>
                                             <p className="text-sm text-muted-foreground">Once deleted, it cannot be recovered.</p>
                                         </div>
                                         <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
@@ -602,12 +602,12 @@ export default function WorkspaceDetail() {
                                                     Delete Workspace
                                                 </Button>
                                             </DialogTrigger>
-                                            <DialogContent className="bg-black/90 backdrop-blur-2xl border-white/10">
+                                            <DialogContent className="bg-background/95 backdrop-blur-2xl border-border">
                                                 <DialogHeader>
                                                     <DialogTitle className="text-red-500">Delete Workspace?</DialogTitle>
                                                     <DialogDescription>
                                                         This action cannot be undone. This will permanently delete 
-                                                        <span className="font-bold text-white"> {workspace.name} </span>
+                                                        <span className="font-bold text-foreground"> {workspace.name} </span>
                                                         and remove all member access.
                                                     </DialogDescription>
                                                 </DialogHeader>

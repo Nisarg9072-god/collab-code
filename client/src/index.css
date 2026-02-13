@@ -16,8 +16,8 @@
     --primary-foreground: 220 20% 6%;
     --secondary: 220 12% 88%;
     --secondary-foreground: 220 14% 20%;
-    --muted: 220 10% 90%;
-    --muted-foreground: 220 8% 50%;
+    --muted: 220 12% 92%;
+    --muted-foreground: 220 12% 35%;
     --accent: 174 62% 47%;
     --accent-foreground: 220 20% 6%;
     --destructive: 0 72% 51%;
@@ -98,7 +98,7 @@
     @apply border-border;
   }
   body {
-    @apply bg-background text-foreground dark;
+    @apply bg-background text-foreground;
     font-family: 'Inter', system-ui, sans-serif;
   }
   code, .font-mono {

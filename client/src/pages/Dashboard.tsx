@@ -6,9 +6,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { Plus, Users, ArrowRight, Loader2, LayoutGrid, LogOut, Clock, DoorOpen, Search, Bell, Command, Star } from "lucide-react";
+import { Plus, Users, ArrowRight, Loader2, LayoutGrid, LogOut, Clock, DoorOpen, Search, Bell, Command, Star, Sun, Moon } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { useTheme } from "next-themes";
 
 interface Workspace {
   id: string;
@@ -22,6 +23,7 @@ interface Workspace {
 export default function Dashboard() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const { theme, setTheme } = useTheme();
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [loading, setLoading] = useState(true);
   
@@ -174,6 +176,15 @@ export default function Dashboard() {
           </div>
 
           <div className="flex items-center gap-4">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="text-muted-foreground hover:text-foreground"
+              title={theme === "dark" ? "Switch to light" : "Switch to dark"}
+              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+            >
+              {theme === "dark" ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+            </Button>
             <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground">
               <Bell className="h-5 w-5" />
             </Button>

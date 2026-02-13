@@ -2,6 +2,7 @@ import { useRef } from "react";
 import Editor, { OnMount } from "@monaco-editor/react";
 import type { ConnectionStatus } from "@/pages/WorkspaceEditor";
 import { Loader2 } from "lucide-react";
+import { useTheme } from "next-themes";
 
 interface CodeEditorProps {
   code: string;
@@ -9,37 +10,63 @@ interface CodeEditorProps {
   onChange: (code: string) => void;
   collaborators: { name: string; status: "online" | "idle" | "offline" }[];
   connectionStatus: ConnectionStatus;
+  onDiagnosticsChange?: (markers: Array<{
+    message: string;
+    severity: number;
+    startLineNumber: number;
+    startColumn: number;
+    endLineNumber: number;
+    endColumn: number;
+  }>) => void;
 }
 
-const CodeEditor = ({ code, language, onChange, collaborators, connectionStatus }: CodeEditorProps) => {
+const CodeEditor = ({ code, language, onChange, collaborators, connectionStatus, onDiagnosticsChange }: CodeEditorProps) => {
   const editorRef = useRef<any>(null);
+  const { theme } = useTheme();
 
   const handleEditorDidMount: OnMount = (editor, monaco) => {
     editorRef.current = editor;
+    const model = editor.getModel();
+    if (model && onDiagnosticsChange) {
+      const pushMarkers = () => {
+        const markers = monaco.editor.getModelMarkers({ resource: model.uri }) || [];
+        const mapped = markers.map(m => ({
+          message: m.message,
+          severity: m.severity,
+          startLineNumber: m.startLineNumber,
+          startColumn: m.startColumn,
+          endLineNumber: m.endLineNumber,
+          endColumn: m.endColumn
+        }));
+        onDiagnosticsChange(mapped);
+      };
+      pushMarkers();
+      const disposable = monaco.editor.onDidChangeMarkers(() => {
+        pushMarkers();
+      });
+      editor.onDidDispose(() => {
+        try { disposable.dispose(); } catch {}
+      });
+    }
   };
 
   const isReadOnly = connectionStatus === "offline";
 
-  // Map language to Monaco language IDs
+  // Map language to Monaco built-in language IDs; fallback to plaintext to avoid false errors
   const getMonacoLanguage = (lang: string) => {
-    const map: Record<string, string> = {
+    const builtIn: Record<string, string> = {
       "TypeScript": "typescript",
       "JavaScript": "javascript",
-      "Python": "python",
-      "Java": "java",
-      "Go": "go",
-      "Rust": "rust",
       "HTML": "html",
       "CSS": "css",
       "JSON": "json",
       "Markdown": "markdown",
-      "SQL": "sql"
     };
-    return map[lang] || "plaintext";
+    return builtIn[lang] || "plaintext";
   };
 
   return (
-    <div className="relative flex flex-1 overflow-hidden bg-[#1e1e1e]">
+    <div className="relative flex flex-1 overflow-hidden bg-background">
       {/* Status Banners */}
       {connectionStatus === "reconnecting" && (
         <div className="absolute top-0 left-0 right-0 z-10 flex items-center justify-center gap-2 bg-yellow-500/10 py-1.5 text-xs text-yellow-500 border-b border-yellow-500/20 backdrop-blur-sm">
@@ -56,9 +83,9 @@ const CodeEditor = ({ code, language, onChange, collaborators, connectionStatus 
 
       <Editor
         height="100%"
-        defaultLanguage="typescript"
+        defaultLanguage="plaintext"
         language={getMonacoLanguage(language)}
-        theme="vs-dark"
+        theme={theme === "dark" ? "vs-dark" : "vs"}
         value={code}
         onChange={(value) => onChange(value || "")}
         onMount={handleEditorDidMount}

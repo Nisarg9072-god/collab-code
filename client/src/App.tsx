@@ -2,6 +2,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { ThemeProvider } from "next-themes";
 import { AuthProvider } from "@/context/AuthContext";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Index from "./pages/Index";
@@ -34,40 +35,42 @@ const App = () => (
       <Toaster />
       <Sonner />
       <AuthProvider>
-        <BrowserRouter>
-          <Routes>
-            <Route path="/" element={<Index />} />
-            <Route path="/login" element={<LoginPage />} />
-            <Route path="/register" element={<RegisterPage />} />
-            <Route path="/dashboard" element={
-              <ProtectedRoute>
-                <Dashboard />
-              </ProtectedRoute>
-            } />
-            <Route path="/profile" element={
-              <ProtectedRoute>
-                <ProfilePage />
-              </ProtectedRoute>
-            } />
-            <Route path="/workspace" element={
-              <ProtectedRoute>
-                <WorkspaceEntry />
-              </ProtectedRoute>
-            } />
-            <Route path="/workspace/:id" element={
-              <ProtectedRoute>
-                <WorkspaceDetail />
-              </ProtectedRoute>
-            } />
-            <Route path="/workspace/:id/editor" element={
-              <ProtectedRoute>
-                <WorkspaceEditor />
-              </ProtectedRoute>
-            } />
-            {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </BrowserRouter>
+        <ThemeProvider attribute="class" defaultTheme="light" enableSystem storageKey="theme">
+          <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+            <Routes>
+              <Route path="/" element={<Index />} />
+              <Route path="/login" element={<LoginPage />} />
+              <Route path="/register" element={<RegisterPage />} />
+              <Route path="/dashboard" element={
+                <ProtectedRoute>
+                  <Dashboard />
+                </ProtectedRoute>
+              } />
+              <Route path="/profile" element={
+                <ProtectedRoute>
+                  <ProfilePage />
+                </ProtectedRoute>
+              } />
+              <Route path="/workspace" element={
+                <ProtectedRoute>
+                  <WorkspaceEntry />
+                </ProtectedRoute>
+              } />
+              <Route path="/workspace/:id" element={
+                <ProtectedRoute>
+                  <WorkspaceDetail />
+                </ProtectedRoute>
+              } />
+              <Route path="/workspace/:id/editor" element={
+                <ProtectedRoute>
+                  <WorkspaceEditor />
+                </ProtectedRoute>
+              } />
+              {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </BrowserRouter>
+        </ThemeProvider>
       </AuthProvider>
     </TooltipProvider>
   </QueryClientProvider>

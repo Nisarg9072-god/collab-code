@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 const API_URL = "http://127.0.0.1:3001/api";
 
 const safeFetch = async (url: string, options?: RequestInit) => {
@@ -35,6 +36,10 @@ const safeFetch = async (url: string, options?: RequestInit) => {
     throw err;
   }
 };
+=======
+const API_URL = (import.meta.env.VITE_API_BASE || import.meta.env.VITE_API_URL || "http://localhost:5000/api");
+try { console.debug("API_URL:", API_URL); } catch {}
+>>>>>>> 4d2bd05 (Resolved merge conflicts)
 
 export const api = {
   auth: {
@@ -200,7 +205,7 @@ export const api = {
         headers: { Authorization: `Bearer ${token}` },
       });
     },
-    update: async (fileId: string, updates: { content?: string, name?: string }) => {
+    update: async (fileId: string, updates: { content?: string, name?: string, language?: string }) => {
       const token = localStorage.getItem("token");
       return safeFetch(`${API_URL}/files/${fileId}`, {
         method: "PUT",
@@ -241,6 +246,7 @@ export const api = {
         body: JSON.stringify({ versionId }),
       });
     }
+<<<<<<< HEAD
   },
   health: {
     checkDb: async () => {
@@ -250,4 +256,38 @@ export const api = {
       return safeFetch(`${API_URL}/health/users`);
     },
   },
+=======
+  }
+  ,
+  runner: {
+    runFile: async (fileId: string, language?: string, stdin?: string) => {
+      const token = localStorage.getItem("token");
+      const response = await fetch(`${API_URL}/run`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ fileId, language, stdin })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Failed to run");
+      return data;
+    },
+    runJudge0: async (source_code: string, language_id: number, stdin?: string, fileId?: string) => {
+      const token = localStorage.getItem("token");
+      const response = await fetch(`${API_URL}/judge0/run`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ source_code, language_id, stdin, fileId })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Failed to run via Judge0");
+      return data;
+    }
+  }
+>>>>>>> 4d2bd05 (Resolved merge conflicts)
 };
