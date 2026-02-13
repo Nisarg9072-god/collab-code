@@ -1,8 +1,23 @@
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { ArrowRight } from "lucide-react";
+import { useEffect } from "react";
+import { api } from "@/lib/api";
 
 const HeroSection = () => {
+  useEffect(() => {
+    // Silent health check for logging purposes only
+    const checkHealth = async () => {
+      try {
+        await api.health.checkDb();
+        await api.health.checkUsers();
+      } catch (err) {
+        // Errors are already handled and logged as warnings in api.ts safeFetch
+      }
+    };
+    checkHealth();
+  }, []);
+
   return (
     <section className="pt-32 pb-20 px-6">
       <div className="mx-auto max-w-4xl text-center">

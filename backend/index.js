@@ -36,8 +36,15 @@ prisma.$connect()
   .then(() => console.log("✅ Database connected successfully"))
   .catch((err) => {
     console.error("❌ Database connection failed:", err.message);
-    // Don't exit process, just log it. The app might recover if DB comes up.
   });
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught Exception thrown:', err);
+});
 
 // SSL fix for Render/Production
 if (process.env.DATABASE_URL && process.env.DATABASE_URL.includes("sslmode")) {
@@ -88,6 +95,38 @@ const loginSchema = z.object({
 
 const createDocSchema = z.object({
   title: z.string().min(1).default("Untitled"),
+});
+
+// Health Check Endpoints
+app.get("/api/health/db", async (req, res) => {
+  console.log("GET /api/health/db - Health check requested");
+  try {
+    await prisma.$queryRaw`SELECT 1 AS ok`;
+    console.log("GET /api/health/db - Success");
+    res.json({ backend: "ok", database: "connected" });
+  } catch (err) {
+    console.error("❌ Database health check failed:", err.message);
+    res.status(503).json({ 
+      backend: "ok", 
+      database: "disconnected", 
+      error: err.message 
+    });
+  }
+});
+
+app.get("/api/health/users", async (req, res) => {
+  console.log("GET /api/health/users - Users count requested");
+  try {
+    const count = await prisma.user.count();
+    console.log("GET /api/health/users - Success, count:", count);
+    res.json({ table: "users", count });
+  } catch (err) {
+    console.error("❌ Table verification failed:", err.message);
+    res.status(500).json({ 
+      table: "users", 
+      error: err.message 
+    });
+  }
 });
 
 // Routes
@@ -1162,3 +1201,6 @@ app.use((err, req, res, next) => {
 app.listen(PORT, () => {
   console.log(`API: http://localhost:${PORT}`);
 });
+
+// Keep process alive hack for sandbox
+setInterval(() => {}, 10000);

@@ -1,50 +1,74 @@
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001/api";
+const API_URL = "http://127.0.0.1:3001/api";
+
+const safeFetch = async (url: string, options?: RequestInit) => {
+  try {
+    const response = await fetch(url, options);
+    const contentType = response.headers.get("content-type");
+
+    if (!response.ok) {
+      if (contentType && contentType.includes("application/json")) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `Request failed with status ${response.status}`);
+      }
+      throw new Error(`Request failed with status ${response.status}`);
+    }
+
+    if (contentType && contentType.includes("application/json")) {
+      return await response.json();
+    }
+
+    // If not JSON, but response was OK, return null or handle accordingly
+    if (url.includes("/health/")) {
+        // Silently return null for health checks if they return non-JSON (like HTML)
+        return null;
+    }
+    
+    console.warn(`Expected JSON from ${url} but received ${contentType}`);
+    return null;
+  } catch (err) {
+    // Only log health check errors as warnings to keep console clean
+    if (url.includes("/health/")) {
+        console.warn(`Silent Health Check Warning (${url}):`, err.message);
+        return null;
+    }
+    console.error(`API Call Error (${url}):`, err);
+    throw err;
+  }
+};
 
 export const api = {
   auth: {
     login: async (credentials: any) => {
-      const response = await fetch(`${API_URL}/auth/login`, {
+      return safeFetch(`${API_URL}/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(credentials),
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Login failed");
-      return data;
     },
     register: async (credentials: any) => {
-      const response = await fetch(`${API_URL}/auth/register`, {
+      return safeFetch(`${API_URL}/auth/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(credentials),
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Registration failed");
-      return data;
     },
     me: async () => {
       const token = localStorage.getItem("token");
-      const response = await fetch(`${API_URL}/auth/me`, {
+      return safeFetch(`${API_URL}/auth/me`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Failed to fetch user");
-      return data;
     },
   },
   workspaces: {
     list: async () => {
       const token = localStorage.getItem("token");
-      const response = await fetch(`${API_URL}/workspaces`, {
+      return safeFetch(`${API_URL}/workspaces`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Failed to fetch workspaces");
-      return data;
     },
     create: async (name: string) => {
       const token = localStorage.getItem("token");
-      const response = await fetch(`${API_URL}/workspaces`, {
+      return safeFetch(`${API_URL}/workspaces`, {
         method: "POST",
         headers: { 
           "Content-Type": "application/json",
@@ -52,13 +76,10 @@ export const api = {
         },
         body: JSON.stringify({ name }),
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Failed to create workspace");
-      return data;
     },
     invite: async (workspaceId: string, email: string) => {
       const token = localStorage.getItem("token");
-      const response = await fetch(`${API_URL}/workspaces/${workspaceId}/invite`, {
+      return safeFetch(`${API_URL}/workspaces/${workspaceId}/invite`, {
         method: "POST",
         headers: { 
           "Content-Type": "application/json",
@@ -66,42 +87,30 @@ export const api = {
         },
         body: JSON.stringify({ email }),
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Failed to invite user");
-      return data;
     },
     get: async (id: string) => {
       const token = localStorage.getItem("token");
-      const response = await fetch(`${API_URL}/workspaces/${id}`, {
+      return safeFetch(`${API_URL}/workspaces/${id}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Failed to fetch workspace");
-      return data;
     },
     delete: async (id: string) => {
       const token = localStorage.getItem("token");
-      const response = await fetch(`${API_URL}/workspaces/${id}`, {
+      return safeFetch(`${API_URL}/workspaces/${id}`, {
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}` },
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Failed to delete workspace");
-      return data;
     },
     removeMember: async (workspaceId: string, userId: string) => {
       const token = localStorage.getItem("token");
-      const response = await fetch(`${API_URL}/workspaces/${workspaceId}/members/${userId}`, {
+      return safeFetch(`${API_URL}/workspaces/${workspaceId}/members/${userId}`, {
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}` },
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Failed to remove member");
-      return data;
     },
     updateRole: async (workspaceId: string, userId: string, role: string) => {
       const token = localStorage.getItem("token");
-      const response = await fetch(`${API_URL}/workspaces/${workspaceId}/members/${userId}`, {
+      return safeFetch(`${API_URL}/workspaces/${workspaceId}/members/${userId}`, {
         method: "PATCH",
         headers: { 
             "Content-Type": "application/json",
@@ -109,13 +118,10 @@ export const api = {
         },
         body: JSON.stringify({ role }),
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Failed to update role");
-      return data;
     },
     join: async (workspaceId: string) => {
       const token = localStorage.getItem("token");
-      const response = await fetch(`${API_URL}/workspaces/join`, {
+      return safeFetch(`${API_URL}/workspaces/join`, {
         method: "POST",
         headers: { 
             "Content-Type": "application/json",
@@ -123,13 +129,10 @@ export const api = {
         },
         body: JSON.stringify({ workspaceId }),
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Failed to join workspace");
-      return data;
     },
     update: async (id: string, name: string) => {
         const token = localStorage.getItem("token");
-        const response = await fetch(`${API_URL}/workspaces/${id}`, {
+        return safeFetch(`${API_URL}/workspaces/${id}`, {
             method: "PATCH",
             headers: { 
                 "Content-Type": "application/json",
@@ -137,30 +140,26 @@ export const api = {
             },
             body: JSON.stringify({ name }),
         });
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error || "Failed to update workspace");
-        return data;
     },
     enterPresence: async (id: string) => {
         const token = localStorage.getItem("token");
-        await fetch(`${API_URL}/workspaces/${id}/presence/enter`, {
+        return fetch(`${API_URL}/workspaces/${id}/presence/enter`, {
             method: "POST",
             headers: { Authorization: `Bearer ${token}` }
         });
     },
     leavePresence: async (id: string) => {
         const token = localStorage.getItem("token");
-        await fetch(`${API_URL}/workspaces/${id}/presence/leave`, {
+        return fetch(`${API_URL}/workspaces/${id}/presence/leave`, {
             method: "POST",
             headers: { Authorization: `Bearer ${token}` }
         });
     },
     getPresence: async (id: string) => {
         const token = localStorage.getItem("token");
-        const response = await fetch(`${API_URL}/workspaces/${id}/presence`, {
+        return safeFetch(`${API_URL}/workspaces/${id}/presence`, {
             headers: { Authorization: `Bearer ${token}` }
         });
-        return await response.json();
     },
     export: async (id: string) => {
       const token = localStorage.getItem("token");
@@ -172,50 +171,38 @@ export const api = {
     },
     activity: async (id: string) => {
       const token = localStorage.getItem("token");
-      const response = await fetch(`${API_URL}/workspaces/${id}/activity`, {
+      return safeFetch(`${API_URL}/workspaces/${id}/activity`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Failed to fetch activity");
-      return data;
     }
   },
   files: {
     list: async (workspaceId: string) => {
       const token = localStorage.getItem("token");
-      const response = await fetch(`${API_URL}/workspaces/${workspaceId}/files`, {
+      return safeFetch(`${API_URL}/workspaces/${workspaceId}/files`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Failed to list files");
-      return data;
     },
     create: async (workspaceId: string, name: string, content: string = "", language: string = "plaintext") => {
       const token = localStorage.getItem("token");
-      const response = await fetch(`${API_URL}/workspaces/${workspaceId}/files`, {
+      return safeFetch(`${API_URL}/workspaces/${workspaceId}/files`, {
         method: "POST",
         headers: { 
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}` 
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}` 
         },
         body: JSON.stringify({ name, content, language }),
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Failed to create file");
-      return data;
     },
     get: async (fileId: string) => {
       const token = localStorage.getItem("token");
-      const response = await fetch(`${API_URL}/files/${fileId}`, {
+      return safeFetch(`${API_URL}/files/${fileId}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Failed to fetch file");
-      return data;
     },
     update: async (fileId: string, updates: { content?: string, name?: string }) => {
       const token = localStorage.getItem("token");
-      const response = await fetch(`${API_URL}/files/${fileId}`, {
+      return safeFetch(`${API_URL}/files/${fileId}`, {
         method: "PUT",
         headers: { 
             "Content-Type": "application/json",
@@ -223,41 +210,29 @@ export const api = {
         },
         body: JSON.stringify(updates),
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Failed to update file");
-      return data;
     },
     delete: async (fileId: string) => {
         const token = localStorage.getItem("token");
-        const response = await fetch(`${API_URL}/files/${fileId}`, {
+        return safeFetch(`${API_URL}/files/${fileId}`, {
             method: "DELETE",
             headers: { Authorization: `Bearer ${token}` },
         });
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error || "Failed to delete file");
-        return data;
     },
     getVersions: async (fileId: string) => {
       const token = localStorage.getItem("token");
-      const response = await fetch(`${API_URL}/files/${fileId}/versions`, {
+      return safeFetch(`${API_URL}/files/${fileId}/versions`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Failed to fetch versions");
-      return data;
     },
     getVersion: async (versionId: string) => {
       const token = localStorage.getItem("token");
-      const response = await fetch(`${API_URL}/file-versions/${versionId}`, {
+      return safeFetch(`${API_URL}/file-versions/${versionId}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Failed to fetch version");
-      return data;
     },
     restore: async (fileId: string, versionId: string) => {
       const token = localStorage.getItem("token");
-      const response = await fetch(`${API_URL}/files/${fileId}/restore`, {
+      return safeFetch(`${API_URL}/files/${fileId}/restore`, {
         method: "POST",
         headers: { 
           "Content-Type": "application/json",
@@ -265,9 +240,14 @@ export const api = {
         },
         body: JSON.stringify({ versionId }),
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Failed to restore version");
-      return data;
     }
-  }
+  },
+  health: {
+    checkDb: async () => {
+      return safeFetch(`${API_URL}/health/db`);
+    },
+    checkUsers: async () => {
+      return safeFetch(`${API_URL}/health/users`);
+    },
+  },
 };
