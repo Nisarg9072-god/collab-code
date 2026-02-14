@@ -1,5 +1,4 @@
-<<<<<<< HEAD
-const API_URL = "http://127.0.0.1:3001/api";
+const API_URL = (import.meta as any).env?.VITE_API_URL || (import.meta as any).env?.VITE_API_BASE || "http://localhost:5000/api";
 
 const safeFetch = async (url: string, options?: RequestInit) => {
   try {
@@ -18,28 +17,21 @@ const safeFetch = async (url: string, options?: RequestInit) => {
       return await response.json();
     }
 
-    // If not JSON, but response was OK, return null or handle accordingly
     if (url.includes("/health/")) {
-        // Silently return null for health checks if they return non-JSON (like HTML)
         return null;
     }
     
     console.warn(`Expected JSON from ${url} but received ${contentType}`);
     return null;
-  } catch (err) {
-    // Only log health check errors as warnings to keep console clean
+  } catch (err: any) {
     if (url.includes("/health/")) {
-        console.warn(`Silent Health Check Warning (${url}):`, err.message);
+        console.warn(`Silent Health Check Warning (${url}):`, err?.message || err);
         return null;
     }
     console.error(`API Call Error (${url}):`, err);
     throw err;
   }
 };
-=======
-const API_URL = (import.meta.env.VITE_API_BASE || import.meta.env.VITE_API_URL || "http://localhost:5000/api");
-try { console.debug("API_URL:", API_URL); } catch {}
->>>>>>> 4d2bd05 (Resolved merge conflicts)
 
 export const api = {
   auth: {
@@ -246,7 +238,6 @@ export const api = {
         body: JSON.stringify({ versionId }),
       });
     }
-<<<<<<< HEAD
   },
   health: {
     checkDb: async () => {
@@ -256,9 +247,6 @@ export const api = {
       return safeFetch(`${API_URL}/health/users`);
     },
   },
-=======
-  }
-  ,
   runner: {
     runFile: async (fileId: string, language?: string, stdin?: string) => {
       const token = localStorage.getItem("token");
@@ -289,5 +277,4 @@ export const api = {
       return data;
     }
   }
->>>>>>> 4d2bd05 (Resolved merge conflicts)
 };
