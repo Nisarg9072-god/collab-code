@@ -9,7 +9,7 @@ import ShareModal from "@/components/workspace/ShareModal";
 import VersionHistory from "@/components/workspace/VersionHistory";
 import { api } from "@/lib/api";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/UI/dialog";
-import { Input } from "@/components/ui/input";
+import { Input } from "@/components/UI/input";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/hooks/use-toast";
 import { FileText, Users, Activity } from "lucide-react";
@@ -17,7 +17,7 @@ import { FileText, Users, Activity } from "lucide-react";
 export type ConnectionStatus = "connected" | "reconnecting" | "offline";
 
 interface File {
-    id: string;n
+    id: string;
     name: string;
     language: string;
     content?: string;
