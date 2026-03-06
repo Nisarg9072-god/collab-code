@@ -19,6 +19,7 @@ import { useAuth } from "./context/AuthContext";
 import { Navigate } from "react-router-dom";
 import DemoReturnDialog from "@/components/demo/DemoReturnDialog";
 import PricingPage from "./pages/PricingPage";
+import SuccessPage from "./pages/SuccessPage";
 
 function RedirectAfterLogin() {
   const { user } = useAuth();
@@ -95,6 +96,7 @@ const App = () => (
             <Routes>
               <Route path="/" element={<Index />} />
               <Route path="/pricing" element={<PricingPage />} />
+              <Route path="/payment-success" element={<SuccessPage />} />
               <Route path="/login" element={<LoginPage />} />
               <Route path="/register" element={<RegisterPage />} />
               <Route path="/dashboard" element={

@@ -13,9 +13,9 @@ import AdmZip from "adm-zip";
 import fs from "fs";
 import path from "path";
 import { spawn } from "child_process";
+import Razorpay from "razorpay";
 
-import dotenv from "dotenv";
-dotenv.config();
+// duplicate dotenv import removed
 /**
  * @swagger
  * tags:
@@ -61,6 +61,12 @@ if (process.env.DATABASE_URL && process.env.DATABASE_URL.includes("sslmode")) {
 
 const PORT = process.env.PORT || 3001;
 const JWT_SECRET = process.env.JWT_SECRET || "supersecret";
+const RAZORPAY_KEY_ID = process.env.RAZORPAY_KEY_ID || "rzp_test_1234567890abcdef";
+const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET || "testsecret1234567890";
+const razorpay = new Razorpay({
+  key_id: RAZORPAY_KEY_ID,
+  key_secret: RAZORPAY_KEY_SECRET,
+});
 
 // Middleware
 app.use(helmet());
@@ -138,6 +144,45 @@ app.get("/api/health/users", async (req, res) => {
 });
 
 // Routes
+
+// Payments (Test Mode): Create Razorpay Order
+app.post("/create-order", async (req, res) => {
+  try {
+    const { plan } = req.body || {};
+    const mapping = {
+      PRO: 1500 * 100,
+      PREMIUM: 2200 * 100,
+      ULTRA: 3000 * 100,
+    };
+    if (!plan || !mapping[plan]) {
+      return res.status(400).json({ error: "Invalid plan" });
+    }
+    const order = await razorpay.orders.create({
+      amount: mapping[plan],
+      currency: "INR",
+      receipt: `order_${plan}_${Date.now()}`,
+      notes: { plan },
+      payment_capture: 1,
+    });
+    res.json({
+      orderId: order.id,
+      amount: order.amount,
+      currency: order.currency,
+      plan,
+      planName: plan,
+      keyId: RAZORPAY_KEY_ID,
+    });
+  } catch (err) {
+    console.error("Failed to create Razorpay order:", err?.message || err);
+    res.status(500).json({ error: "Failed to create order" });
+  }
+});
+
+// Mirror under /api for consistency
+app.post("/api/create-order", async (req, res) => {
+  req.url = "/create-order";
+  app._router.handle(req, res);
+});
 
 // Register
 /**

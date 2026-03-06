@@ -67,6 +67,20 @@ const safeFetch = async (url: string, options?: RequestInit) => {
 };
 
 export const api = {
+  billing: {
+    createOrder: async (plan: "PRO" | "PREMIUM" | "ULTRA") => {
+      // Allow order creation only if not in demo mode and plan is payable
+      const url = `${API_URL}/create-order`;
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ plan }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Failed to create order");
+      return data;
+    }
+  },
   auth: {
     login: async (credentials: any) => {
       if (isDemo()) {
