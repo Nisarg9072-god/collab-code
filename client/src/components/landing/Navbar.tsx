@@ -55,6 +55,12 @@ const Navbar = () => {
             >
               Use Cases
             </button>
+            <Link
+              to="/pricing"
+              className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Pricing
+            </Link>
             {user && (
               <Link
                 to="/workspace"
@@ -66,11 +72,6 @@ const Navbar = () => {
           </div>
 
           <div className="flex items-center gap-4">
-            <Link to="/pricing" className="hidden md:block">
-              <Button variant="outline" className="border-primary/40 text-primary hover:bg-primary/10">
-                Upgrade
-              </Button>
-            </Link>
             <Button
               variant="ghost"
               size="icon"
@@ -119,8 +120,8 @@ const Navbar = () => {
               </DropdownMenu>
             ) : (
               <Link to="/login">
-                <Button 
-                  variant="outline" 
+                <Button
+                  variant="outline"
                   className="border-teal-500/50 text-teal-500 hover:bg-teal-500/10 hover:text-teal-400"
                 >
                   Login

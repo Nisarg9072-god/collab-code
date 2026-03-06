@@ -85,8 +85,6 @@ const WorkspaceEditor = () => {
     endColumn: number;
   }>>([]);
   const [aiPrompt, setAiPrompt] = useState("");
-  const location = useLocation();
-  const demoActive = new URLSearchParams(location.search).get("demo") === "true" || sessionStorage.getItem("cc.demo") === "true";
   const [usageSecondsToday, setUsageSecondsToday] = useState<number>(0);
   const [editingLocked, setEditingLocked] = useState<boolean>(false);
 
@@ -139,21 +137,19 @@ const WorkspaceEditor = () => {
     const getUserId = () => {
       try {
         const token = localStorage.getItem("token");
-        if (!token && demoActive) return "demo-user";
-        // Best-effort: pull from last known profile cache if available in localStorage
+        if (!token) return "anon";
         const cached = localStorage.getItem("cc.user.id");
-        return cached || (demoActive ? "demo-user" : "anon");
+        return cached || "anon";
       } catch {
-        return demoActive ? "demo-user" : "anon";
+        return "anon";
       }
     };
-    const getPlan = (): "DEMO" | "FREE" | "PRO" | "PREMIUM" | "ULTRA" => {
+    const getPlan = (): "FREE" | "PRO" | "PREMIUM" | "ULTRA" => {
       const stored = (localStorage.getItem("cc.plan") || "").toUpperCase();
       if (stored === "PRO" || stored === "PREMIUM" || stored === "ULTRA" || stored === "FREE") return stored as any;
-      return demoActive ? "DEMO" : "FREE";
+      return "FREE";
     };
     const limits: Record<string, number | "unlimited"> = {
-      DEMO: 2 * 60 * 60,
       FREE: 2 * 60 * 60,
       PRO: 6 * 60 * 60,
       PREMIUM: 8 * 60 * 60,
@@ -208,7 +204,7 @@ const WorkspaceEditor = () => {
       document.removeEventListener("visibilitychange", visHandler);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [demoActive]);
+  }, []);
 
   useEffect(() => {
     const v = localStorage.getItem("cc.terminalHeight");

@@ -339,11 +339,16 @@ export const api = {
     log: (workspaceId: string) => safeFetch(`${API_URL}/workspaces/${workspaceId}/git/log`, { headers: authHeader() }),
   },
 
-  billing: {
-    createOrder: (plan: string) => safeFetch(`${API_URL}/billing/create-order`, {
+  payment: {
+    createOrder: (plan: string) => safeFetch(`${API_URL}/payment/create-order`, {
       method: "POST",
       headers: jsonHeaders(),
       body: JSON.stringify({ plan }),
+    }),
+    verify: (paymentData: any) => safeFetch(`${API_URL}/payment/verify`, {
+      method: "POST",
+      headers: jsonHeaders(),
+      body: JSON.stringify(paymentData),
     }),
   },
 

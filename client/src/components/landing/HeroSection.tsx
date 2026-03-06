@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 import { Button } from "@/components/UI/button";
 import { ArrowRight } from "lucide-react";
 import { useEffect } from "react";
+import { useAuth } from "@/context/AuthContext";
 import { api } from "@/lib/api";
 
 const HeroSection = () => {
@@ -9,8 +10,7 @@ const HeroSection = () => {
     // Silent health check for logging purposes only
     const checkHealth = async () => {
       try {
-        await api.health.checkDb();
-        await api.health.checkUsers();
+        await api.health.db();
       } catch (err) {
         // Errors are already handled and logged as warnings in api.ts safeFetch
       }
@@ -18,47 +18,31 @@ const HeroSection = () => {
     checkHealth();
   }, []);
 
+  const { user } = useAuth();
+
   return (
     <section className="pt-32 pb-20 px-6">
       <div className="mx-auto max-w-4xl text-center">
         <h1 className="text-4xl md:text-5xl lg:text-6xl font-semibold tracking-tight text-foreground leading-tight">
           Real-time collaborative code editing for distributed teams.
         </h1>
-        
+
         <p className="mt-6 text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto leading-relaxed">
-          CollabCode lets multiple developers work on the same codebase simultaneously 
+          CollabCode lets multiple developers work on the same codebase simultaneously
           with live synchronization and minimal setup.
         </p>
 
         <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
-          <Link to="/workspace">
+          <Link to={user ? "/workspace" : "/login"}>
             <Button size="lg" className="gap-2 text-base px-8">
               Open a Workspace
               <ArrowRight className="h-4 w-4" />
             </Button>
           </Link>
-          <Button
-            size="lg"
-            variant="secondary"
-            className="text-base px-8"
-            onClick={() => {
-              try {
-                if (typeof window !== "undefined") {
-                  sessionStorage.setItem("cc.demo", "true");
-                  localStorage.setItem("demoMode", "true");
-                }
-              } catch {}
-              if (typeof window !== "undefined") {
-                window.location.href = "/dashboard";
-              }
-            }}
-          >
-            Use Demo
-          </Button>
         </div>
 
         <p className="mt-6 text-sm text-muted-foreground">
-          No login required • Built for daily use
+          Built for daily use
         </p>
       </div>
     </section>
