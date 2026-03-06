@@ -1,3 +1,7 @@
+import WorkspaceIDE from "@/components/workspace/ide/WorkspaceIDE";
+
+const WorkspaceEditor = () => {
+  return <WorkspaceIDE />;
 import { useState, useEffect, useRef } from "react";
 import { useParams, useLocation } from "react-router-dom";
 import { formatDistanceToNow } from "date-fns";
