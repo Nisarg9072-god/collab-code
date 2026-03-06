@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/UI/dialog";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/UI/button";
 import { useNavigate } from "react-router-dom";
 
 function getUserId(): string {

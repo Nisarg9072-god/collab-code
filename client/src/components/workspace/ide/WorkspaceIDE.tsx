@@ -37,8 +37,8 @@ import SidePanel from "@/components/workspace/SidePanel";
 import ShareModal from "@/components/workspace/ShareModal";
 import VersionHistory from "@/components/workspace/VersionHistory";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/UI/dialog";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
+import { Input } from "@/components/UI/input";
+import { Button } from "@/components/UI/button";
 
 interface File {
     id: string;

@@ -1,12 +1,12 @@
 import { useState, useEffect } from "react";
 import { formatDistanceToNow } from "date-fns";
 import { api } from "@/lib/api";
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
-import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/UI/sheet";
+import { Button } from "@/components/UI/button";
+import { ScrollArea } from "@/components/UI/scroll-area";
 import { Loader2, RotateCcw, Eye, X } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/UI/dialog";
 
 interface Version {
     id: string;

@@ -1,7 +1,7 @@
 import { useGitStore } from "@/features/git/gitStore";
 import { GitStatusEntry } from "@/features/git/gitTypes";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
+import { Input } from "@/components/UI/input";
+import { Button } from "@/components/UI/button";
 import { api } from "@/lib/api";
 import { toast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/UI/dialog";

@@ -1,5 +1,5 @@
 import { Command } from 'cmdk';
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Dialog, DialogContent } from "@/components/UI/dialog";
 import { useCommandStore } from "@/features/commands/commandStore";
 
 interface CommandPaletteProps {

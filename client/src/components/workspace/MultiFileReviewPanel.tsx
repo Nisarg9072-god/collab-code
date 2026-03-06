@@ -4,7 +4,7 @@ import {
   ChevronDown, ChevronRight, BookOpen, Zap, ShieldAlert, Lightbulb,
   FileText, ArrowRight, Loader2
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/UI/button";
 import { cn } from "@/lib/utils";
 import { useAIStore, MultiFileReviewResult, ProjectSummaryResult, CrossFileIssue } from "@/features/ai/aiStore";
 import { aiService } from "@/features/ai/aiService";

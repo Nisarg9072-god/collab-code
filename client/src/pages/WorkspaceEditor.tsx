@@ -1,7 +1,4 @@
 import WorkspaceIDE from "@/components/workspace/ide/WorkspaceIDE";
-
-const WorkspaceEditor = () => {
-  return <WorkspaceIDE />;
 import { useState, useEffect, useRef } from "react";
 import { useParams, useLocation } from "react-router-dom";
 import { formatDistanceToNow } from "date-fns";
@@ -16,20 +13,12 @@ import { api } from "@/lib/api";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/UI/dialog";
 import { Input } from "@/components/UI/input";
 import { Button } from "@/components/UI/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { toast } from "@/hooks/use-toast";
+import { toast } from "@/components/UI/use-toast";
 import { FileText, Users, Activity } from "lucide-react";
 
 export type ConnectionStatus = "connected" | "reconnecting" | "offline";
 
 interface File {
-    id: string;
-    name: string;
-    language: string;
-    content?: string;
-    updatedAt?: string;
   id: string;
   name: string;
   language: string;
@@ -753,21 +742,13 @@ const WorkspaceEditor = () => {
             <p>Select a file to edit</p>
           </div>
         ) : (
-            <CodeEditor
-              code={code}
-              language={language}
-              onChange={setCode}
-              collaborators={MOCK_PARTICIPANTS.filter(p => p.name !== "You")}
-              connectionStatus={connectionStatus}
-              readOnly={editingLocked}
-              onDiagnosticsChange={setProblems}
-            />
           <CodeEditor
             code={code}
             language={language}
             onChange={setCode}
             collaborators={MOCK_PARTICIPANTS.filter(p => p.name !== "You")}
             connectionStatus={connectionStatus}
+            readOnly={editingLocked}
             onDiagnosticsChange={setProblems}
           />
         )}

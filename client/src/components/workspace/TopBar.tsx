@@ -13,7 +13,7 @@ import {
   AlertCircle,
   Download
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/UI/button";
 import { Sun, Moon } from "lucide-react";
 import { useTheme } from "next-themes";
 import {
@@ -21,12 +21,12 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+} from "@/components/UI/dropdown-menu";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@/components/ui/tooltip";
+} from "@/components/UI/tooltip";
 import Logo from "@/components/Logo";
 import { useToast } from "@/hooks/use-toast";
 import { formatDistanceToNow } from "date-fns";

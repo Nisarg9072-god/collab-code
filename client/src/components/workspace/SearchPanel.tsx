@@ -2,9 +2,9 @@
 import { useState } from "react";
 import { useSearchStore } from "@/features/search/searchStore";
 import { SearchResult, SearchMatch } from "@/features/search/searchTypes";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { Input } from "@/components/UI/input";
+import { Button } from "@/components/UI/button";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/UI/accordion";
 import { File, Replace, Sparkles, Search, Loader2, Brain, FileSearch } from "lucide-react";
 import { api } from "@/lib/api";
 import { toast } from "@/hooks/use-toast";

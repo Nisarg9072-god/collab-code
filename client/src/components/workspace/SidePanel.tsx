@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { FileText, Users, Activity, Plus, MoreHorizontal, FolderPlus, ChevronRight, ChevronDown, Folder } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/UI/button";
 import { cn } from "@/lib/utils";
 import { FileNode, buildFileTree } from "@/lib/fileUtils";
 import { Awareness } from 'y-protocols/awareness';
@@ -21,24 +21,24 @@ interface SidePanelProps {
   width?: number;
   hideTabs?: boolean;
   initialTab?: Tab;
-  awareness: Awareness | null;
+  awareness?: Awareness | null;
 }
 
 type Tab = "files" | "participants" | "activity";
 
-const FileTreeItem = ({ 
-  node, 
-  level, 
-  activeFileId, 
+const FileTreeItem = ({
+  node,
+  level,
+  activeFileId,
   onFileSelect,
   openFolders,
   toggleFolder,
   onContextMenu,
   onNewFileInFolder
-}: { 
-  node: FileNode; 
-  level: number; 
-  activeFileId: string | null; 
+}: {
+  node: FileNode;
+  level: number;
+  activeFileId: string | null;
   onFileSelect: (id: string) => void;
   openFolders: Record<string, boolean>;
   toggleFolder: (id: string) => void;
@@ -59,9 +59,9 @@ const FileTreeItem = ({
           {isOpen ? <ChevronDown size={14} className="text-muted-foreground" /> : <ChevronRight size={14} className="text-muted-foreground" />}
           <Folder size={14} className="text-blue-400/80 fill-blue-400/20" />
           <span className="text-[11px] font-medium truncate flex-1">{node.name}</span>
-          <Plus 
-            size={12} 
-            className="text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-primary transition-all" 
+          <Plus
+            size={12}
+            className="text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-primary transition-all"
             onClick={(e) => {
               e.stopPropagation();
               onNewFileInFolder(node.id.replace('folder-', ''));
@@ -69,11 +69,11 @@ const FileTreeItem = ({
           />
         </button>
         {isOpen && node.children?.map(child => (
-          <FileTreeItem 
-            key={child.id} 
-            node={child} 
-            level={level + 1} 
-            activeFileId={activeFileId} 
+          <FileTreeItem
+            key={child.id}
+            node={child}
+            level={level + 1}
+            activeFileId={activeFileId}
             onFileSelect={onFileSelect}
             openFolders={openFolders}
             toggleFolder={toggleFolder}
@@ -102,14 +102,14 @@ const FileTreeItem = ({
   );
 };
 
-const SidePanel = ({ 
-  files, 
-  participants, 
-  activity, 
-  activeFileId, 
-  onFileSelect, 
-  onFileCreate, 
-  onFolderCreate, 
+const SidePanel = ({
+  files,
+  participants,
+  activity,
+  activeFileId,
+  onFileSelect,
+  onFileCreate,
+  onFolderCreate,
   onCreateFileInFolder,
   onRenameFile,
   onDeleteFile,
@@ -216,14 +216,14 @@ const SidePanel = ({
                 />
               </div>
             )}
-            
+
             <div className="px-1">
               {fileTree.map(node => (
-                <FileTreeItem 
-                  key={node.id} 
-                  node={node} 
-                  level={0} 
-                  activeFileId={activeFileId} 
+                <FileTreeItem
+                  key={node.id}
+                  node={node}
+                  level={0}
+                  activeFileId={activeFileId}
                   onFileSelect={onFileSelect}
                   openFolders={openFolders}
                   toggleFolder={toggleFolder}

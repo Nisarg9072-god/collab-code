@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { Send, Sparkles, Trash2, Code2, MessageSquare, Layers } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Button } from "@/components/UI/button";
+import { Input } from "@/components/UI/input";
 import { cn } from "@/lib/utils";
 import { useAIStore, AIAction, AIMessage } from "@/features/ai/aiStore";
 import { aiService } from "@/features/ai/aiService";

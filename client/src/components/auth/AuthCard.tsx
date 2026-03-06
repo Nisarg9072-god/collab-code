@@ -1,5 +1,5 @@
 import React from "react";
-import { GlassCard } from "@/components/ui/glass-card";
+import { GlassCard } from "@/components/UI/glass-card";
 import { cn } from "@/lib/utils";
 
 interface AuthCardProps {

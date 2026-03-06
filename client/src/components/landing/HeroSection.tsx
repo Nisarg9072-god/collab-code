@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/UI/button";
 import { ArrowRight } from "lucide-react";
 import { useEffect } from "react";
 import { api } from "@/lib/api";

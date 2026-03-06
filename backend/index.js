@@ -12,7 +12,6 @@ import pool from "./db.js";
 import { spawn } from "child_process";
 import fs from "fs";
 import path from "path";
-import { spawn } from "child_process";
 import { WebSocketServer } from 'ws';
 import { terminalManager } from './terminalManager.js';
 import { runGitCommand } from './gitUtils.js';
@@ -20,11 +19,6 @@ import { lspManager } from './lspManager.js';
 import { aiManager } from './aiManager.js';
 import { buildPrompt } from './promptBuilders.js';
 import { createServer } from 'http';
-import { URL } from 'url';
-
-const __filename = new URL(import.meta.url).pathname;
-const __dirname = path.dirname(__filename);
-const REPOS_DIR = path.join(__dirname, 'repos');
 import Razorpay from "razorpay";
 
 // duplicate dotenv import removed
@@ -43,6 +37,7 @@ import { fileURLToPath } from "url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const REPOS_DIR = path.join(__dirname, 'repos');
 
 const app = express();
 
@@ -409,55 +404,20 @@ app.post("/api/create-order", async (req, res) => {
   app._router.handle(req, res);
 });
 
-// Register
-/**
- * @swagger
- * /api/auth/register:
- *   post:
- *     tags: [Auth]
- *     summary: Register a new user
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required: [email, password]
- *             properties:
- *               email:
- *                 type: string
- *               password:
- *                 type: string
- *               name:
- *                 type: string
- *     responses:
- *       201:
- *         description: User registered successfully
- */
-app.post("/api/auth/register", async (req, res, next) => {
 // ─────────────────────────────────────────────
 // Auth Routes
 // ─────────────────────────────────────────────
 // REGISTER (alias: signup)
 const _registerHandler = async (req, res) => {
   try {
-    const { email, password } = registerSchema.parse(req.body);
-    if (DEMO_AUTH) {
-      const demoId = `demo_${Buffer.from(email).toString("hex").slice(0, 16)}`;
-      const token = jwt.sign({ sub: demoId, email }, JWT_SECRET, { expiresIn: "1h" });
-      return res.status(201).json({
-        token,
-        user: { id: demoId, email }
-      });
-    }
-
-    // Check if user exists
-    const existing = await prisma.user.findUnique({ where: { email } });
-    if (existing) {
-      console.error(`[Auth Error] Email already exists: ${email}`);
-      return res.status(409).json({ error: "Email already exists" });
     const { email, password, display_name } = signupSchema.parse(req.body);
     const emailNorm = email.trim().toLowerCase();
+
+    if (DEMO_AUTH) {
+      const demoId = `demo_${Buffer.from(emailNorm).toString("hex").slice(0, 16)}`;
+      const token = jwt.sign({ sub: demoId, email: emailNorm }, JWT_SECRET, { expiresIn: "1h" });
+      return res.status(201).json({ token, user: { id: demoId, email: emailNorm } });
+    }
 
     const existing = await pool.query("SELECT id FROM users WHERE email = $1", [emailNorm]);
     if (existing.rows.length > 0) {
@@ -479,17 +439,6 @@ const _registerHandler = async (req, res) => {
     const token = jwt.sign({ sub: user.id, email: user.email }, JWT_SECRET, { expiresIn: "7d" });
     return ok(res, { token, user: { id: user.id, email: user.email, displayName: user.display_name, createdAt: user.created_at } }, 201);
   } catch (err) {
-    console.error("[Auth Error] Register failed:", err);
-    const msg = String(err && err.message ? err.message : "");
-    if (
-      err.code === 'P1001' ||
-      err.code === 'P1000' ||
-      msg.includes("Can't reach database") ||
-      msg.includes("Authentication failed against database server")
-    ) {
-      return res.status(503).json({ error: "Database connection failed. Please check credentials and that PostgreSQL is running." });
-    }
-    res.status(500).json({ error: "server error" });
     if (err instanceof ZodError) return fail(res, err.errors[0]?.message || "Invalid input");
     console.error("[Register]", err.message);
     return fail(res, "Registration failed. Please try again.", 500);
@@ -503,22 +452,14 @@ app.post("/api/auth/register", _registerHandler);
 app.post("/api/auth/login", async (req, res) => {
   try {
     const { email, password } = loginSchema.parse(req.body);
-    if (DEMO_AUTH) {
-      const demoId = `demo_${Buffer.from(email).toString("hex").slice(0, 16)}`;
-      const token = jwt.sign({ sub: demoId, email }, JWT_SECRET, { expiresIn: "1h" });
-      console.log(`[Auth] Demo user logged in: ${demoId}`);
-      return res.json({
-        token,
-        user: { id: demoId, email }
-      });
-    }
-    const user = await prisma.user.findUnique({ where: { email } });
-    
-    if (!user) {
-      console.error(`[Auth Error] User not found: ${email}`);
-      return res.status(401).json({ error: "Invalid credentials" });
-    }
     const emailNorm = email.trim().toLowerCase();
+
+    if (DEMO_AUTH) {
+      const demoId = `demo_${Buffer.from(emailNorm).toString("hex").slice(0, 16)}`;
+      const token = jwt.sign({ sub: demoId, email: emailNorm }, JWT_SECRET, { expiresIn: "1h" });
+      console.log(`[Auth] Demo user logged in: ${demoId}`);
+      return res.json({ token, user: { id: demoId, email: emailNorm } });
+    }
 
     const { rows } = await pool.query(
       "SELECT id, email, pass_hash, display_name, created_at FROM users WHERE email = $1",
@@ -538,17 +479,9 @@ app.post("/api/auth/login", async (req, res) => {
       user: { id: user.id, email: user.email, displayName: user.display_name, createdAt: user.created_at },
     });
   } catch (err) {
-    console.error("[Auth Error] Login failed:", err);
-    const msg = String(err && err.message ? err.message : "");
-    if (
-      err.code === 'P1001' ||
-      err.code === 'P1000' ||
-      msg.includes("Can't reach database") ||
-      msg.includes("Authentication failed against database server")
-    ) {
-      return res.status(503).json({ error: "Database connection failed. Please check credentials and that PostgreSQL is running." });
-    }
-    next(err);
+    if (err instanceof ZodError) return fail(res, err.errors[0]?.message || "Invalid input");
+    console.error("[Login]", err.message);
+    return fail(res, "Login failed. Please try again.", 500);
   }
 });
 
@@ -563,7 +496,7 @@ app.post("/api/ai/ask", auth, async (req, res, next) => {
 
     const prompt = buildPrompt(action, context);
     const response = await aiManager.generateResponse(prompt, context);
-    
+
     res.json({ response });
   } catch (err) {
     next(err);
@@ -578,8 +511,8 @@ app.post("/api/ai/review", auth, async (req, res, next) => {
       return res.status(400).json({ error: "Missing code, language, or fileName" });
     }
 
-    const prompt = buildPrompt('review', { 
-      fullCode: code, language, fileName, workspaceId, fileList, workspaceName 
+    const prompt = buildPrompt('review', {
+      fullCode: code, language, fileName, workspaceId, fileList, workspaceName
     });
     const rawResponse = await aiManager.generateResponse(prompt, {});
 
@@ -850,7 +783,7 @@ app.post("/api/ai/repo-health", auth, async (req, res, next) => {
 app.get("/api/workspaces/:id/git/status", auth, async (req, res, next) => {
   try {
     const { id } = req.params;
-    const files = await prisma.projectFile.findMany({ where: { workspaceId: id } });
+    const { rows: files } = await pool.query("SELECT * FROM project_files WHERE room_id = $1", [id]);
     const status = await runGitCommand(id, files, 'git status --porcelain');
     res.json({ status });
   } catch (err) {
@@ -862,7 +795,7 @@ app.get("/api/workspaces/:id/git/status", auth, async (req, res, next) => {
 app.get("/api/workspaces/:id/git/diff/:fileName", auth, async (req, res, next) => {
   try {
     const { id, fileName } = req.params;
-    const files = await prisma.projectFile.findMany({ where: { workspaceId: id } });
+    const { rows: files } = await pool.query("SELECT * FROM project_files WHERE room_id = $1", [id]);
     const diff = await runGitCommand(id, files, `git diff ${fileName}`);
     res.json({ diff });
   } catch (err) {
@@ -875,7 +808,7 @@ app.post("/api/workspaces/:id/git/add", auth, async (req, res, next) => {
   try {
     const { id } = req.params;
     const { files: filesToAdd } = req.body;
-    const files = await prisma.projectFile.findMany({ where: { workspaceId: id } });
+    const { rows: files } = await pool.query("SELECT * FROM project_files WHERE room_id = $1", [id]);
     await runGitCommand(id, files, `git add ${filesToAdd.join(' ')}`);
     res.json({ message: "Files added" });
   } catch (err) {
@@ -888,7 +821,7 @@ app.post("/api/workspaces/:id/git/commit", auth, async (req, res, next) => {
   try {
     const { id } = req.params;
     const { message } = req.body;
-    const files = await prisma.projectFile.findMany({ where: { workspaceId: id } });
+    const { rows: files } = await pool.query("SELECT * FROM project_files WHERE room_id = $1", [id]);
     await runGitCommand(id, files, `git commit -m "${message}"`);
     res.json({ message: "Commit successful" });
   } catch (err) {
@@ -900,14 +833,11 @@ app.post("/api/workspaces/:id/git/commit", auth, async (req, res, next) => {
 app.get("/api/workspaces/:id/git/log", auth, async (req, res, next) => {
   try {
     const { id } = req.params;
-    const files = await prisma.projectFile.findMany({ where: { workspaceId: id } });
+    const { rows: files } = await pool.query("SELECT * FROM project_files WHERE room_id = $1", [id]);
     const log = await runGitCommand(id, files, 'git log --pretty=format:"%h - %an, %ar : %s"');
     res.json({ log });
   } catch (err) {
     next(err);
-    if (err instanceof ZodError) return fail(res, err.errors[0]?.message || "Invalid input");
-    console.error("[Login]", err.message);
-    return fail(res, "Login failed. Please try again.", 500);
   }
 });
 
@@ -1195,185 +1125,10 @@ app.post("/api/workspaces/:id/invite", auth, async (req, res) => {
     const emailNorm = email.trim().toLowerCase();
     const frontendUrl = process.env.FRONTEND_URL || "http://localhost:8080";
 
-if (DEMO_AUTH) {
-  app.post("/api/workspaces", auth, async (req, res) => {
-    const { name } = req.body;
-    if (!name) return res.status(400).json({ error: "Name is required" });
-    const id = demoId("ws");
-    const now = new Date().toISOString();
-    const ws = { id, name, ownerId: req.user.sub, createdAt: now, updatedAt: now };
-    demoStore.workspaces.set(id, ws);
-    const key = `${id}:${req.user.sub}`;
-    demoStore.members.set(key, { id: demoId("m"), workspaceId: id, userId: req.user.sub, role: "OWNER", user: { id: req.user.sub, email: req.user.email } });
-    demoStore.activities.set(id, []);
-    return res.json({ ...ws, members: [demoStore.members.get(key)] });
-  });
-  app.get("/api/workspaces", auth, async (req, res) => {
-    const arr = [];
-    for (const [id, ws] of demoStore.workspaces.entries()) {
-      const has = demoStore.members.get(`${id}:${req.user.sub}`);
-      if (has) {
-        const members = [];
-        for (const v of demoStore.members.values()) if (v.workspaceId === id) members.push(v);
-        arr.push({ ...ws, owner: { id: ws.ownerId, email: req.user.email }, members });
-      }
+    if (DEMO_AUTH) {
+      return ok(res, { message: `Demo: Invitation sent to ${emailNorm}`, invited: { email: emailNorm, role }, userExists: false }, 201);
     }
-    arr.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-    return res.json(arr);
-  });
-  app.post("/api/workspaces/:id/invite", auth, async (req, res) => {
-    const { id } = req.params;
-    const { email } = req.body;
-    if (!email) return res.status(400).json({ error: "Email is required" });
-    const ws = demoStore.workspaces.get(id);
-    if (!ws) return res.status(404).json({ error: "Workspace not found" });
-    const requester = demoStore.members.get(`${id}:${req.user.sub}`);
-    if (!requester || requester.role !== 'OWNER') return res.status(403).json({ error: "Only owners can invite members" });
-    const invitedId = `demo_${Buffer.from(email).toString("hex").slice(0, 16)}`;
-    const exists = demoStore.members.get(`${id}:${invitedId}`);
-    if (exists) return res.status(409).json({ error: "User is already a member" });
-    demoStore.members.set(`${id}:${invitedId}`, { id: demoId("m"), workspaceId: id, userId: invitedId, role: "EDITOR", user: { id: invitedId, email } });
-    const host = req.get('host') || 'localhost:8081';
-    const inviteLink = `${req.protocol}://${host}/workspace/${id}`;
-    return res.json({ message: "User added to workspace", link: inviteLink });
-  });
-  app.get("/api/workspaces/:id", auth, async (req, res) => {
-    const { id } = req.params;
-    const ws = demoStore.workspaces.get(id);
-    if (!ws) return res.status(404).json({ error: "Workspace not found" });
-    const isMember = !!demoStore.members.get(`${id}:${req.user.sub}`);
-    if (!isMember) return res.status(403).json({ error: "Access denied" });
-    const members = [];
-    for (const v of demoStore.members.values()) if (v.workspaceId === id) members.push(v);
-    return res.json({ ...ws, owner: { id: ws.ownerId, email: req.user.email }, members });
-  });
-  app.get("/api/workspaces/:id/members", auth, async (req, res) => {
-    const { id } = req.params;
-    const me = demoStore.members.get(`${id}:${req.user.sub}`);
-    if (!me) return res.status(403).json({ error: "Access denied" });
-    const members = [];
-    for (const v of demoStore.members.values()) if (v.workspaceId === id) members.push(v);
-    return res.json(members);
-  });
-  app.patch("/api/workspaces/:id/members/:userId", auth, async (req, res) => {
-    const { id, userId } = req.params;
-    const { role } = req.body;
-    if (!['OWNER', 'ADMIN', 'MEMBER', 'EDITOR', 'VIEWER'].includes(role)) return res.status(400).json({ error: "Invalid role" });
-    const requester = demoStore.members.get(`${id}:${req.user.sub}`);
-    if (!requester || requester.role !== 'OWNER') return res.status(403).json({ error: "Only owners can change roles" });
-    const targetKey = `${id}:${userId}`;
-    const target = demoStore.members.get(targetKey);
-    if (!target) return res.status(404).json({ error: "Member not found" });
-    demoStore.members.set(targetKey, { ...target, role });
-    return res.json(demoStore.members.get(targetKey));
-  });
-  app.delete("/api/workspaces/:id/members/:userId", auth, async (req, res) => {
-    const { id, userId } = req.params;
-    const requester = demoStore.members.get(`${id}:${req.user.sub}`);
-    if (!requester || requester.role !== 'OWNER') return res.status(403).json({ error: "Only owners can remove members" });
-    if (userId === req.user.sub) return res.status(400).json({ error: "Cannot remove yourself. Leave the workspace instead." });
-    const targetKey = `${id}:${userId}`;
-    if (!demoStore.members.has(targetKey)) return res.status(404).json({ error: "Member not found" });
-    demoStore.members.delete(targetKey);
-    return res.json({ message: "Member removed" });
-  });
-  app.delete("/api/workspaces/:id", auth, async (req, res) => {
-    const { id } = req.params;
-    const requester = demoStore.members.get(`${id}:${req.user.sub}`);
-    if (!requester || requester.role !== 'OWNER') return res.status(403).json({ error: "Only owners can delete workspaces" });
-    demoStore.workspaces.delete(id);
-    for (const k of Array.from(demoStore.members.keys())) if (k.startsWith(id + ":")) demoStore.members.delete(k);
-    for (const [fid, f] of Array.from(demoStore.files.entries())) if (f.workspaceId === id) demoStore.files.delete(fid);
-    demoStore.activities.delete(id);
-    return res.json({ message: "Workspace deleted" });
-  });
-  app.get("/api/workspaces/:id/files", auth, async (req, res) => {
-    const { id } = req.params;
-    const me = demoStore.members.get(`${id}:${req.user.sub}`);
-    if (!me) return res.status(403).json({ error: "Access denied" });
-    const files = [];
-    for (const f of demoStore.files.values()) if (f.workspaceId === id) files.push({ id: f.id, name: f.name, language: f.language, updatedAt: f.updatedAt });
-    files.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
-    return res.json(files);
-  });
-  app.post("/api/workspaces/:id/files", auth, async (req, res) => {
-    const { id } = req.params;
-    const { name, content, language } = req.body;
-    if (!name) return res.status(400).json({ error: "Filename is required" });
-    const me = demoStore.members.get(`${id}:${req.user.sub}`);
-    if (!me || ['VIEWER'].includes(me.role)) return res.status(403).json({ error: "Write access denied" });
-    const fileId = demoId("file");
-    const f = { id: fileId, workspaceId: id, name, content: content || "", language: language || "plaintext", updatedAt: new Date().toISOString() };
-    demoStore.files.set(fileId, f);
-    const acts = demoStore.activities.get(id) || [];
-    acts.push({ id: demoId("act"), workspaceId: id, userId: req.user.sub, actionType: "FILE_CREATED", metadata: { fileName: name, fileId }, createdAt: new Date().toISOString() });
-    demoStore.activities.set(id, acts);
-    return res.json(f);
-  });
-  app.get("/api/files/:id", auth, async (req, res) => {
-    const { id } = req.params;
-    const f = demoStore.files.get(id);
-    if (!f) return res.status(404).json({ error: "File not found" });
-    const me = demoStore.members.get(`${f.workspaceId}:${req.user.sub}`);
-    if (!me) return res.status(403).json({ error: "Access denied" });
-    return res.json(f);
-  });
-  app.put("/api/files/:id", auth, async (req, res) => {
-    const { id } = req.params;
-    const { content, name, language } = req.body;
-    const f = demoStore.files.get(id);
-    if (!f) return res.status(404).json({ error: "File not found" });
-    const me = demoStore.members.get(`${f.workspaceId}:${req.user.sub}`);
-    if (!me || ['VIEWER'].includes(me.role)) return res.status(403).json({ error: "Write access denied" });
-    const updated = { ...f, content: content !== undefined ? content : f.content, name: name !== undefined ? name : f.name, language: language !== undefined ? language : f.language, updatedAt: new Date().toISOString() };
-    demoStore.files.set(id, updated);
-    const acts = demoStore.activities.get(f.workspaceId) || [];
-    const actionType = name !== undefined && name !== f.name ? "FILE_RENAMED" : language !== undefined && language !== f.language ? "FILE_LANGUAGE_CHANGED" : "FILE_UPDATED";
-    acts.push({ id: demoId("act"), workspaceId: f.workspaceId, userId: req.user.sub, actionType, metadata: { fileName: updated.name, fileId: id }, createdAt: new Date().toISOString() });
-    demoStore.activities.set(f.workspaceId, acts);
-    return res.json(updated);
-  });
-  app.delete("/api/files/:id", auth, async (req, res) => {
-    const { id } = req.params;
-    const f = demoStore.files.get(id);
-    if (!f) return res.status(404).json({ error: "File not found" });
-    const me = demoStore.members.get(`${f.workspaceId}:${req.user.sub}`);
-    if (!me || !['OWNER', 'ADMIN'].includes(me.role)) return res.status(403).json({ error: "Only admins can delete files" });
-    demoStore.files.delete(id);
-    const acts = demoStore.activities.get(f.workspaceId) || [];
-    acts.push({ id: demoId("act"), workspaceId: f.workspaceId, userId: req.user.sub, actionType: "FILE_DELETED", metadata: { fileName: f.name, fileId: id }, createdAt: new Date().toISOString() });
-    demoStore.activities.set(f.workspaceId, acts);
-    return res.json({ message: "File deleted" });
-  });
-  app.get("/api/workspaces/:id/activity", auth, async (req, res) => {
-    const { id } = req.params;
-    const me = demoStore.members.get(`${id}:${req.user.sub}`);
-    if (!me) return res.status(403).json({ error: "Access denied" });
-    const activities = demoStore.activities.get(id) || [];
-    activities.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-    return res.json(activities.slice(0, 50));
-  });
-}
 
-// Create Workspace
-app.post("/api/workspaces", auth, async (req, res, next) => {
-  try {
-    const { name } = req.body;
-    if (!name) return res.status(400).json({ error: "Name is required" });
-
-    const workspace = await prisma.workspace.create({
-      data: {
-        name,
-        ownerId: req.user.sub,
-        members: {
-          create: {
-            userId: req.user.sub,
-            role: "OWNER",
-          },
-        },
-      },
-      include: {
-        members: true,
     // Case 1: User exists — add them directly to workspace
     const { rows: userRows } = await pool.query(
       "SELECT id, email, display_name FROM users WHERE email = $1",
@@ -1411,7 +1166,6 @@ app.post("/api/workspaces", auth, async (req, res, next) => {
     }
 
     // Case 2: User doesn't have an account — create a pending invitation
-    // Check if already invited (pending)
     const { rows: existingInvite } = await pool.query(
       `SELECT id, status, expires_at FROM invitations
        WHERE room_id = $1 AND invited_email = $2`,
@@ -1449,6 +1203,7 @@ app.post("/api/workspaces", auth, async (req, res, next) => {
     return fail(res, "Failed to send invitation. Please try again.", 500);
   }
 });
+
 
 // GET /api/workspaces/:id/invitations — list pending invitations
 app.get("/api/workspaces/:id/invitations", auth, async (req, res) => {
@@ -1853,143 +1608,143 @@ app.post("/api/workspaces/:id/search", auth, async (req, res, next) => {
 
 // Get File Versions
 app.get("/api/files/:id/versions", auth, async (req, res, next) => {
-    try {
-        const { id } = req.params;
-        const file = await prisma.projectFile.findUnique({ where: { id } });
-        if (!file) return res.status(404).json({ error: "File not found" });
-
-        // Access check
-        const member = await prisma.workspaceMember.findUnique({
-            where: { workspaceId_userId: { workspaceId: file.workspaceId, userId: req.user.sub } }
-        });
-        if (!member) return res.status(403).json({ error: "Access denied" });
-
-        const versions = await prisma.fileVersion.findMany({
-            where: { fileId: id },
-            orderBy: { createdAt: 'desc' },
-            select: {
-                id: true,
-                createdAt: true,
-                createdBy: true,
-                // We exclude content from list for performance
-            }
-        });
-
-        // Enrich with user info if possible (manually or via relation if we added it, but we didn't add relation to User for createdBy to keep it simple/flexible)
-        // For now, return as is. Frontend can show "User ID" or we can fetch users.
-        // Let's fetch user emails for createdBy
-        const userIds = [...new Set(versions.map(v => v.createdBy).filter(Boolean))];
-        const users = await prisma.user.findMany({
-            where: { id: { in: userIds } },
-            select: { id: true, email: true }
-        });
-        const userMap = Object.fromEntries(users.map(u => [u.id, u.email]));
-
-        const enriched = versions.map(v => ({
-            ...v,
-            creatorEmail: userMap[v.createdBy] || "Unknown"
-        }));
-
-        res.json(enriched);
-    } catch (err) {
-        next(err);
-    }
-// ─────────────────────────────────────────────
-// File Versions
-// ─────────────────────────────────────────────
-app.get("/api/files/:id/versions", auth, async (req, res) => {
   try {
-    const { rows: fileRows } = await pool.query(
-      "SELECT id, room_id AS \"workspaceId\" FROM project_files WHERE id = $1",
-      [req.params.id]
-    );
-    if (!fileRows[0]) return fail(res, "File not found", 404);
+    const { id } = req.params;
+    const file = await prisma.projectFile.findUnique({ where: { id } });
+    if (!file) return res.status(404).json({ error: "File not found" });
 
-    const member = await checkMembership(fileRows[0].workspaceId, req.user.sub);
-    if (!member) return fail(res, "Access denied", 403);
+    // Access check
+    const member = await prisma.workspaceMember.findUnique({
+      where: { workspaceId_userId: { workspaceId: file.workspaceId, userId: req.user.sub } }
+    });
+    if (!member) return res.status(403).json({ error: "Access denied" });
 
-    const { rows } = await pool.query(
-      `SELECT fv.id, fv.created_at AS "createdAt",
+    const versions = await prisma.fileVersion.findMany({
+      where: { fileId: id },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        createdAt: true,
+        createdBy: true,
+        // We exclude content from list for performance
+      }
+    });
+
+    // Enrich with user info if possible (manually or via relation if we added it, but we didn't add relation to User for createdBy to keep it simple/flexible)
+    // For now, return as is. Frontend can show "User ID" or we can fetch users.
+    // Let's fetch user emails for createdBy
+    const userIds = [...new Set(versions.map(v => v.createdBy).filter(Boolean))];
+    const users = await prisma.user.findMany({
+      where: { id: { in: userIds } },
+      select: { id: true, email: true }
+    });
+    const userMap = Object.fromEntries(users.map(u => [u.id, u.email]));
+
+    const enriched = versions.map(v => ({
+      ...v,
+      creatorEmail: userMap[v.createdBy] || "Unknown"
+    }));
+
+    res.json(enriched);
+  } catch (err) {
+    next(err);
+  }
+  // ─────────────────────────────────────────────
+  // File Versions
+  // ─────────────────────────────────────────────
+  app.get("/api/files/:id/versions", auth, async (req, res) => {
+    try {
+      const { rows: fileRows } = await pool.query(
+        "SELECT id, room_id AS \"workspaceId\" FROM project_files WHERE id = $1",
+        [req.params.id]
+      );
+      if (!fileRows[0]) return fail(res, "File not found", 404);
+
+      const member = await checkMembership(fileRows[0].workspaceId, req.user.sub);
+      if (!member) return fail(res, "Access denied", 403);
+
+      const { rows } = await pool.query(
+        `SELECT fv.id, fv.created_at AS "createdAt",
               u.email AS "createdBy"
        FROM file_versions fv
        LEFT JOIN users u ON u.id = fv.created_by
        WHERE fv.file_id = $1
        ORDER BY fv.created_at DESC
        LIMIT 50`,
-      [req.params.id]
-    );
-    return ok(res, rows);
-  } catch (err) {
-    return fail(res, "Failed to fetch version history", 500);
-  }
-});
+        [req.params.id]
+      );
+      return ok(res, rows);
+    } catch (err) {
+      return fail(res, "Failed to fetch version history", 500);
+    }
+  });
 
-app.get("/api/file-versions/:versionId", auth, async (req, res) => {
-  try {
-    const { rows } = await pool.query(
-      `SELECT fv.id, fv.content, fv.created_at AS "createdAt", u.email AS "createdBy"
+  app.get("/api/file-versions/:versionId", auth, async (req, res) => {
+    try {
+      const { rows } = await pool.query(
+        `SELECT fv.id, fv.content, fv.created_at AS "createdAt", u.email AS "createdBy"
        FROM file_versions fv
        LEFT JOIN users u ON u.id = fv.created_by
        WHERE fv.id = $1`,
-      [req.params.versionId]
-    );
-    if (!rows[0]) return fail(res, "Version not found", 404);
-    return ok(res, rows[0]);
-  } catch (err) {
-    return fail(res, "Failed to fetch version", 500);
-  }
-});
+        [req.params.versionId]
+      );
+      if (!rows[0]) return fail(res, "Version not found", 404);
+      return ok(res, rows[0]);
+    } catch (err) {
+      return fail(res, "Failed to fetch version", 500);
+    }
+  });
 
-app.post("/api/files/:id/restore", auth, async (req, res) => {
-  try {
-    const { versionId } = req.body;
-    if (!versionId) return fail(res, "versionId is required");
+  app.post("/api/files/:id/restore", auth, async (req, res) => {
+    try {
+      const { versionId } = req.body;
+      if (!versionId) return fail(res, "versionId is required");
 
-    const { rows: fileRows } = await pool.query(
-      "SELECT id, room_id AS \"workspaceId\", content FROM project_files WHERE id = $1",
-      [req.params.id]
-    );
-    if (!fileRows[0]) return fail(res, "File not found", 404);
+      const { rows: fileRows } = await pool.query(
+        "SELECT id, room_id AS \"workspaceId\", content FROM project_files WHERE id = $1",
+        [req.params.id]
+      );
+      if (!fileRows[0]) return fail(res, "File not found", 404);
 
-    const member = await checkMembership(fileRows[0].workspaceId, req.user.sub);
-    if (!member || member.role === "VIEWER") return fail(res, "Access denied", 403);
+      const member = await checkMembership(fileRows[0].workspaceId, req.user.sub);
+      if (!member || member.role === "VIEWER") return fail(res, "Access denied", 403);
 
-    const { rows: vRows } = await pool.query(
-      "SELECT content FROM file_versions WHERE id = $1 AND file_id = $2",
-      [versionId, req.params.id]
-    );
-    if (!vRows[0]) return fail(res, "Version not found", 404);
+      const { rows: vRows } = await pool.query(
+        "SELECT content FROM file_versions WHERE id = $1 AND file_id = $2",
+        [versionId, req.params.id]
+      );
+      if (!vRows[0]) return fail(res, "Version not found", 404);
 
-    // Save current state as a new version before restoring
-    await pool.query(
-      "INSERT INTO file_versions (file_id, content, created_by) VALUES ($1, $2, $3)",
-      [req.params.id, fileRows[0].content, req.user.sub]
-    );
+      // Save current state as a new version before restoring
+      await pool.query(
+        "INSERT INTO file_versions (file_id, content, created_by) VALUES ($1, $2, $3)",
+        [req.params.id, fileRows[0].content, req.user.sub]
+      );
 
-    const { rows } = await pool.query(
-      `UPDATE project_files SET content = $1, updated_at = now() WHERE id = $2
+      const { rows } = await pool.query(
+        `UPDATE project_files SET content = $1, updated_at = now() WHERE id = $2
        RETURNING id, room_id AS "workspaceId", name, content, language,
                  created_at AS "createdAt", updated_at AS "updatedAt"`,
-      [vRows[0].content, req.params.id]
-    );
-    return ok(res, { ...rows[0], message: "Version restored successfully" });
-  } catch (err) {
-    return fail(res, "Failed to restore version", 500);
-  }
-});
+        [vRows[0].content, req.params.id]
+      );
+      return ok(res, { ...rows[0], message: "Version restored successfully" });
+    } catch (err) {
+      return fail(res, "Failed to restore version", 500);
+    }
+  });
 
-// ─────────────────────────────────────────────
-// Activity
-// ─────────────────────────────────────────────
-app.get("/api/workspaces/:id/activity", auth, async (req, res) => {
-  // Return recent file version activity as activity log
-  try {
-    const { id } = req.params;
-    const member = await checkMembership(id, req.user.sub);
-    if (!member) return fail(res, "Access denied", 403);
+  // ─────────────────────────────────────────────
+  // Activity
+  // ─────────────────────────────────────────────
+  app.get("/api/workspaces/:id/activity", auth, async (req, res) => {
+    // Return recent file version activity as activity log
+    try {
+      const { id } = req.params;
+      const member = await checkMembership(id, req.user.sub);
+      if (!member) return fail(res, "Access denied", 403);
 
-    const { rows } = await pool.query(
-      `SELECT fv.id, fv.created_at AS "createdAt",
+      const { rows } = await pool.query(
+        `SELECT fv.id, fv.created_at AS "createdAt",
               json_build_object('email', u.email) AS "user",
               json_build_object('fileName', pf.name) AS "metadata",
               'FILE_UPDATED' AS "actionType"
@@ -1999,220 +1754,211 @@ app.get("/api/workspaces/:id/activity", auth, async (req, res) => {
        WHERE pf.room_id = $1
        ORDER BY fv.created_at DESC
        LIMIT 50`,
-      [id]
-    );
-    return ok(res, rows);
-  } catch (err) {
-    return ok(res, []); // gracefully return empty array on error
-  }
-});
-
-// Export (stubbed)
-app.get("/api/workspaces/:id/export", auth, (req, res) => {
-  return fail(res, "Workspace export is not yet implemented", 501);
-});
-
-// ─────────────────────────────────────────────
-// Code Runner (local)
-// ─────────────────────────────────────────────
-app.post("/api/run", auth, async (req, res) => {
-  try {
-    const { fileId, code, language, stdin } = req.body;
-    let content = code;
-    let lang = language;
-
-    if (fileId) {
-      if (DEMO_AUTH) {
-        const f = demoStore.files.get(fileId);
-        if (!f) return res.status(404).json({ error: "File not found" });
-        const me = demoStore.members.get(`${f.workspaceId}:${req.user.sub}`);
-        if (!me) return res.status(403).json({ error: "Access denied" });
-        content = f.content;
-        lang = language || f.language;
-        workspaceId = f.workspaceId;
-      } else {
-        const file = await prisma.projectFile.findUnique({
-          where: { id: fileId },
-          select: { id: true, content: true, language: true, workspaceId: true },
-        });
-        if (!file) return res.status(404).json({ error: "File not found" });
-        const member = await prisma.workspaceMember.findUnique({
-          where: { workspaceId_userId: { workspaceId: file.workspaceId, userId: req.user.sub } }
-        });
-        if (!member) return res.status(403).json({ error: "Access denied" });
-        content = file.content;
-        lang = language || file.language;
-        workspaceId = file.workspaceId;
-      }
-      const { rows } = await pool.query(
-        "SELECT id, content, language, room_id AS \"workspaceId\" FROM project_files WHERE id = $1",
-        [fileId]
+        [id]
       );
-      if (!rows[0]) return fail(res, "File not found", 404);
-      const m = await checkMembership(rows[0].workspaceId, req.user.sub);
-      if (!m) return fail(res, "Access denied", 403);
-      content = rows[0].content;
-      lang = language || rows[0].language;
+      return ok(res, rows);
+    } catch (err) {
+      return ok(res, []); // gracefully return empty array on error
     }
+  });
 
-    if (!content) return fail(res, "No code to run");
+  // Export (stubbed)
+  app.get("/api/workspaces/:id/export", auth, (req, res) => {
+    return fail(res, "Workspace export is not yet implemented", 501);
+  });
 
-    const normalized = (lang || "").toLowerCase();
-    const tmpDir = path.join(__dirname, "runner_tmp");
-    if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
+  // ─────────────────────────────────────────────
+  // Code Runner (local)
+  // ─────────────────────────────────────────────
+  app.post("/api/run", auth, async (req, res) => {
+    try {
+      const { fileId, code, language, stdin } = req.body;
+      let content = code;
+      let lang = language;
 
-    let tmpFile, command, args;
-    const uid = `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
-
-    if (["javascript", "js", ""].includes(normalized)) {
-      tmpFile = path.join(tmpDir, `run_${uid}.js`);
-      command = process.execPath;
-      args = [tmpFile];
-    } else if (normalized === "python" || normalized === "py") {
-      tmpFile = path.join(tmpDir, `run_${Date.now()}_${Math.random().toString(36).slice(2)}.py`);
-      if (process.env.PYTHON_PATH && process.env.PYTHON_PATH.length > 0) {
-        command = process.env.PYTHON_PATH;
-        args = [tmpFile];
-      } else if (process.platform === "win32") {
-        // Prefer Windows Python launcher if available
-        command = "py";
-        args = ["-3", tmpFile];
-      } else {
-        command = "python";
-        args = [tmpFile];
-      }
-      const rawStdinForPrelude = typeof req.body.stdin === "string" ? req.body.stdin : null;
-      const stdinForPrelude = rawStdinForPrelude !== null ? (rawStdinForPrelude.endsWith("\n") ? rawStdinForPrelude : rawStdinForPrelude + "\n") : null;
-      if (stdinForPrelude !== null) {
-        prelude = `import builtins, io\n_data = ${JSON.stringify(stdinForPrelude)}\n_stream = io.StringIO(_data)\n_bi_input = builtins.input\nbuiltins.input = lambda prompt=None: (print(prompt, end='') if prompt is not None else None) or _stream.readline().rstrip(\"\\n\")\n`;
-      }
-    } else if (["python", "py"].includes(normalized)) {
-      tmpFile = path.join(tmpDir, `run_${uid}.py`);
-      command = process.env.PYTHON_PATH || "python3";
-      args = [tmpFile];
-    } else if (normalized === "go") {
-      tmpFile = path.join(tmpDir, `run_${uid}.go`);
-      command = "go";
-      args = ["run", tmpFile];
-    } else {
-      return fail(res, `Language "${lang}" is not supported for local execution. Supported: javascript, python, go`);
-    }
-
-    fs.writeFileSync(tmpFile, content, "utf8");
-    const start = Date.now();
-    const child = spawn(command, args, { stdio: ["pipe", "pipe", "pipe"] });
-    let stdout = "";
-    let stderr = "";
-    const timeoutMs = 5000;
-    const timer = setTimeout(() => {
-      try { child.kill(); } catch {}
-    }, timeoutMs);
-    // Write stdin if provided (ensure trailing newline for line-based input)
-    const rawStdin = typeof req.body.stdin === "string" ? req.body.stdin : null;
-    const stdinText = rawStdin !== null ? (rawStdin.endsWith("\n") ? rawStdin : rawStdin + "\n") : null;
-    if (stdinText !== null) {
-      try {
-        child.stdin.write(stdinText);
-      } catch {}
-    }
-    try { child.stdin.end(); } catch {}
-    child.stdout.on("data", d => { stdout += d.toString(); });
-    child.stderr.on("data", d => { stderr += d.toString(); });
-    child.on("error", e => {
-      clearTimeout(timer);
-      try { fs.unlinkSync(tmpFile); } catch {}
-      const msg = String(e && e.message ? e.message : e);
-      let friendly = msg;
-      if (e && e.code === "ENOENT") {
-        if (normalized === "python" || normalized === "py") {
-          friendly = "Python runtime not found. Install Python or set PYTHON_PATH to python.exe";
-        } else if (normalized === "go") {
-          friendly = "Go runtime not found. Install Go and ensure 'go' is on PATH";
+      if (fileId) {
+        if (DEMO_AUTH) {
+          const f = demoStore.files.get(fileId);
+          if (!f) return res.status(404).json({ error: "File not found" });
+          const me = demoStore.members.get(`${f.workspaceId}:${req.user.sub}`);
+          if (!me) return res.status(403).json({ error: "Access denied" });
+          content = f.content;
+          lang = language || f.language;
+          workspaceId = f.workspaceId;
         } else {
-          friendly = `Runtime '${command}' not found. Ensure it is installed and on PATH`;
+          const file = await prisma.projectFile.findUnique({
+            where: { id: fileId },
+            select: { id: true, content: true, language: true, workspaceId: true },
+          });
+          if (!file) return res.status(404).json({ error: "File not found" });
+          const member = await prisma.workspaceMember.findUnique({
+            where: { workspaceId_userId: { workspaceId: file.workspaceId, userId: req.user.sub } }
+          });
+          if (!member) return res.status(403).json({ error: "Access denied" });
+          content = file.content;
+          lang = language || file.language;
+          workspaceId = file.workspaceId;
         }
+        const { rows } = await pool.query(
+          "SELECT id, content, language, room_id AS \"workspaceId\" FROM project_files WHERE id = $1",
+          [fileId]
+        );
+        if (!rows[0]) return fail(res, "File not found", 404);
+        const m = await checkMembership(rows[0].workspaceId, req.user.sub);
+        if (!m) return fail(res, "Access denied", 403);
+        content = rows[0].content;
+        lang = language || rows[0].language;
       }
-      res.status(500).json({ error: friendly, stdout: "", stderr: msg, exitCode: -1, durationMs: Date.now() - start, workspaceId });
-    });
-    child.on("close", code => {
 
-    let stdout = "", stderr = "";
-    const timer = setTimeout(() => { try { child.kill(); } catch { } }, 5000);
-    if (stdin) { try { child.stdin.write(stdin.endsWith("\n") ? stdin : stdin + "\n"); } catch { } }
-    try { child.stdin.end(); } catch { }
+      if (!content) return fail(res, "No code to run");
 
-    child.stdout.on("data", (d) => { stdout += d; });
-    child.stderr.on("data", (d) => { stderr += d; });
-    child.on("close", (code) => {
-      clearTimeout(timer);
-      try { fs.unlinkSync(tmpFile); } catch { }
-      return ok(res, { stdout, stderr, exitCode: code, durationMs: Date.now() - start });
-    });
-  } catch (err) {
-    return fail(res, "Runner error: " + err.message, 500);
-  }
-});
+      const normalized = (lang || "").toLowerCase();
+      const tmpDir = path.join(__dirname, "runner_tmp");
+      if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
 
-// ─────────────────────────────────────────────
-// Judge0 Proxy
-// ─────────────────────────────────────────────
-app.post("/api/judge0/run", auth, async (req, res) => {
-  try {
-    const API_KEY = process.env.RAPIDAPI_KEY;
-    if (!API_KEY) return fail(res, "Judge0 API key not configured. Set RAPIDAPI_KEY in backend/.env", 501);
+      let tmpFile, command, args;
+      const uid = `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
 
-    const { source_code, language_id, stdin, fileId } = req.body || {};
-    let code = source_code;
-    let langId = language_id;
+      if (["javascript", "js", ""].includes(normalized)) {
+        tmpFile = path.join(tmpDir, `run_${uid}.js`);
+        command = process.execPath;
+        args = [tmpFile];
+      } else if (normalized === "python" || normalized === "py") {
+        tmpFile = path.join(tmpDir, `run_${Date.now()}_${Math.random().toString(36).slice(2)}.py`);
+        if (process.env.PYTHON_PATH && process.env.PYTHON_PATH.length > 0) {
+          command = process.env.PYTHON_PATH;
+          args = [tmpFile];
+        } else if (process.platform === "win32") {
+          // Prefer Windows Python launcher if available
+          command = "py";
+          args = ["-3", tmpFile];
+        } else {
+          command = "python";
+          args = [tmpFile];
+        }
+        const rawStdinForPrelude = typeof req.body.stdin === "string" ? req.body.stdin : null;
+        const stdinForPrelude = rawStdinForPrelude !== null ? (rawStdinForPrelude.endsWith("\n") ? rawStdinForPrelude : rawStdinForPrelude + "\n") : null;
+        if (stdinForPrelude !== null) {
+          prelude = `import builtins, io\n_data = ${JSON.stringify(stdinForPrelude)}\n_stream = io.StringIO(_data)\n_bi_input = builtins.input\nbuiltins.input = lambda prompt=None: (print(prompt, end='') if prompt is not None else None) or _stream.readline().rstrip(\"\\n\")\n`;
+        }
+      } else if (["python", "py"].includes(normalized)) {
+        tmpFile = path.join(tmpDir, `run_${uid}.py`);
+        command = process.env.PYTHON_PATH || "python3";
+        args = [tmpFile];
+      } else if (normalized === "go") {
+        tmpFile = path.join(tmpDir, `run_${uid}.go`);
+        command = "go";
+        args = ["run", tmpFile];
+      } else {
+        return fail(res, `Language "${lang}" is not supported for local execution. Supported: javascript, python, go`);
+      }
 
-    if (!code && fileId) {
-      const { rows } = await pool.query(
-        "SELECT content, language, room_id AS \"workspaceId\" FROM project_files WHERE id = $1",
-        [fileId]
-      );
-      if (!rows[0]) return fail(res, "File not found", 404);
-      const m = await checkMembership(rows[0].workspaceId, req.user.sub);
-      if (!m) return fail(res, "Access denied", 403);
-      code = rows[0].content;
-      const map = { Python: 71, JavaScript: 63, TypeScript: 74, "C++": 54, C: 50, Java: 62, Go: 60, Rust: 73 };
-      langId = language_id || map[rows[0].language] || 63;
+      fs.writeFileSync(tmpFile, content, "utf8");
+      const start = Date.now();
+      const child = spawn(command, args, { stdio: ["pipe", "pipe", "pipe"] });
+      let stdout = "";
+      let stderr = "";
+      const timeoutMs = 5000;
+      const timer = setTimeout(() => {
+        try { child.kill(); } catch { }
+      }, timeoutMs);
+      // Write stdin if provided (ensure trailing newline for line-based input)
+      const rawStdin = typeof req.body.stdin === "string" ? req.body.stdin : null;
+      const stdinText = rawStdin !== null ? (rawStdin.endsWith("\n") ? rawStdin : rawStdin + "\n") : null;
+      if (stdinText !== null) {
+        try {
+          child.stdin.write(stdinText);
+        } catch { }
+      }
+      try { child.stdin.end(); } catch { }
+      child.stdout.on("data", d => { stdout += d.toString(); });
+      child.stderr.on("data", d => { stderr += d.toString(); });
+      child.on("error", e => {
+        clearTimeout(timer);
+        try { fs.unlinkSync(tmpFile); } catch { }
+        const msg = String(e && e.message ? e.message : e);
+        let friendly = msg;
+        if (e && e.code === "ENOENT") {
+          if (normalized === "python" || normalized === "py") {
+            friendly = "Python runtime not found. Install Python or set PYTHON_PATH to python.exe";
+          } else if (normalized === "go") {
+            friendly = "Go runtime not found. Install Go and ensure 'go' is on PATH";
+          } else {
+            friendly = `Runtime '${command}' not found. Ensure it is installed and on PATH`;
+          }
+        }
+        res.status(500).json({ error: friendly, stdout: "", stderr: msg, exitCode: -1, durationMs: Date.now() - start, workspaceId });
+      });
+      child.on("close", (code) => {
+        clearTimeout(timer);
+        try { fs.unlinkSync(tmpFile); } catch { }
+        return ok(res, { stdout, stderr, exitCode: code, durationMs: Date.now() - start });
+      });
+    } catch (err) {
+      return fail(res, "Runner error: " + err.message, 500);
     }
+  });
 
-    if (!code || !langId) return fail(res, "source_code and language_id are required");
+  // ─────────────────────────────────────────────
+  // Judge0 Proxy
+  // ─────────────────────────────────────────────
+  app.post("/api/judge0/run", auth, async (req, res) => {
+    try {
+      const API_KEY = process.env.RAPIDAPI_KEY;
+      if (!API_KEY) return fail(res, "Judge0 API key not configured. Set RAPIDAPI_KEY in backend/.env", 501);
 
-    const r = await fetch("https://judge0-ce.p.rapidapi.com/submissions?base64_encoded=false&wait=true", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-RapidAPI-Key": API_KEY,
-        "X-RapidAPI-Host": "judge0-ce.p.rapidapi.com",
-      },
-      body: JSON.stringify({ source_code: code, language_id: langId, stdin: stdin || "" }),
-    });
-    const data = await r.json();
-    return ok(res, {
-      stdout: data?.stdout || "",
-      stderr: data?.stderr || data?.compile_output || "",
-      exitCode: data?.status?.id === 3 ? 0 : (data?.exit_code ?? -1),
-      durationMs: data?.time ? Math.round(parseFloat(data.time) * 1000) : undefined,
-    });
-  } catch (err) {
-    return fail(res, "Judge0 runner error: " + err.message, 500);
-  }
-});
+      const { source_code, language_id, stdin, fileId } = req.body || {};
+      let code = source_code;
+      let langId = language_id;
 
-// ─────────────────────────────────────────────
-// User Invitations (what the logged-in user has received)
-// ─────────────────────────────────────────────
+      if (!code && fileId) {
+        const { rows } = await pool.query(
+          "SELECT content, language, room_id AS \"workspaceId\" FROM project_files WHERE id = $1",
+          [fileId]
+        );
+        if (!rows[0]) return fail(res, "File not found", 404);
+        const m = await checkMembership(rows[0].workspaceId, req.user.sub);
+        if (!m) return fail(res, "Access denied", 403);
+        code = rows[0].content;
+        const map = { Python: 71, JavaScript: 63, TypeScript: 74, "C++": 54, C: 50, Java: 62, Go: 60, Rust: 73 };
+        langId = language_id || map[rows[0].language] || 63;
+      }
 
-// GET /api/invitations — see ALL pending invitations sent to the current user's email
-app.get("/api/invitations", auth, async (req, res) => {
-  try {
-    const { rows: userRows } = await pool.query("SELECT email FROM users WHERE id = $1", [req.user.sub]);
-    if (!userRows[0]) return fail(res, "User not found", 404);
+      if (!code || !langId) return fail(res, "source_code and language_id are required");
 
-    const { rows } = await pool.query(
-      `SELECT
+      const r = await fetch("https://judge0-ce.p.rapidapi.com/submissions?base64_encoded=false&wait=true", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-RapidAPI-Key": API_KEY,
+          "X-RapidAPI-Host": "judge0-ce.p.rapidapi.com",
+        },
+        body: JSON.stringify({ source_code: code, language_id: langId, stdin: stdin || "" }),
+      });
+      const data = await r.json();
+      return ok(res, {
+        stdout: data?.stdout || "",
+        stderr: data?.stderr || data?.compile_output || "",
+        exitCode: data?.status?.id === 3 ? 0 : (data?.exit_code ?? -1),
+        durationMs: data?.time ? Math.round(parseFloat(data.time) * 1000) : undefined,
+      });
+    } catch (err) {
+      return fail(res, "Judge0 runner error: " + err.message, 500);
+    }
+  });
+
+  // ─────────────────────────────────────────────
+  // User Invitations (what the logged-in user has received)
+  // ─────────────────────────────────────────────
+
+  // GET /api/invitations — see ALL pending invitations sent to the current user's email
+  app.get("/api/invitations", auth, async (req, res) => {
+    try {
+      const { rows: userRows } = await pool.query("SELECT email FROM users WHERE id = $1", [req.user.sub]);
+      if (!userRows[0]) return fail(res, "User not found", 404);
+
+      const { rows } = await pool.query(
+        `SELECT
          i.id,
          i.room_id       AS "workspaceId",
          i.invited_email AS "invitedEmail",
@@ -2229,201 +1975,206 @@ app.get("/api/invitations", auth, async (req, res) => {
          AND i.status = 'pending'
          AND i.expires_at > now()
        ORDER BY i.created_at DESC`,
-      [userRows[0].email]
-    );
-    return ok(res, rows);
-  } catch (err) {
-    console.error("[Get my invitations]", err.message);
-    return fail(res, "Failed to fetch invitations", 500);
-  }
-});
+        [userRows[0].email]
+      );
+      return ok(res, rows);
+    } catch (err) {
+      console.error("[Get my invitations]", err.message);
+      return fail(res, "Failed to fetch invitations", 500);
+    }
+  });
 
-// POST /api/invitations/:id/accept — accept a pending invitation
-app.post("/api/invitations/:id/accept", auth, async (req, res) => {
-  try {
-    const { rows: userRows } = await pool.query("SELECT email FROM users WHERE id = $1", [req.user.sub]);
-    if (!userRows[0]) return fail(res, "User not found", 404);
+  // POST /api/invitations/:id/accept — accept a pending invitation
+  app.post("/api/invitations/:id/accept", auth, async (req, res) => {
+    try {
+      const { rows: userRows } = await pool.query("SELECT email FROM users WHERE id = $1", [req.user.sub]);
+      if (!userRows[0]) return fail(res, "User not found", 404);
 
-    const { rows: invRows } = await pool.query(
-      `SELECT i.*, r.name AS "workspaceName"
+      const { rows: invRows } = await pool.query(
+        `SELECT i.*, r.name AS "workspaceName"
        FROM invitations i
        JOIN rooms r ON r.id = i.room_id
        WHERE i.id = $1 AND i.invited_email = $2`,
-      [req.params.id, userRows[0].email]
-    );
-    if (!invRows[0]) return fail(res, "Invitation not found or not addressed to you", 404);
+        [req.params.id, userRows[0].email]
+      );
+      if (!invRows[0]) return fail(res, "Invitation not found or not addressed to you", 404);
 
-    const inv = invRows[0];
-    if (inv.status !== "pending") return fail(res, `Invitation has already been ${inv.status}`, 410);
-    if (new Date(inv.expires_at) < new Date()) return fail(res, "Invitation has expired", 410);
+      const inv = invRows[0];
+      if (inv.status !== "pending") return fail(res, `Invitation has already been ${inv.status}`, 410);
+      if (new Date(inv.expires_at) < new Date()) return fail(res, "Invitation has expired", 410);
 
-    // Check if already member
-    const alreadyMember = await checkMembership(inv.room_id, req.user.sub);
-    if (alreadyMember) {
-      await pool.query("UPDATE invitations SET status = 'accepted' WHERE id = $1", [inv.id]);
-      return ok(res, { message: `You are already a member of "${inv.workspaceName}"`, workspaceId: inv.room_id });
-    }
+      // Check if already member
+      const alreadyMember = await checkMembership(inv.room_id, req.user.sub);
+      if (alreadyMember) {
+        await pool.query("UPDATE invitations SET status = 'accepted' WHERE id = $1", [inv.id]);
+        return ok(res, { message: `You are already a member of "${inv.workspaceName}"`, workspaceId: inv.room_id });
+      }
 
-    await pool.query(
-      `INSERT INTO room_members (room_id, user_id, role)
+      await pool.query(
+        `INSERT INTO room_members (room_id, user_id, role)
        VALUES ($1, $2, $3)
        ON CONFLICT (room_id, user_id) DO UPDATE SET role = $3`,
-      [inv.room_id, req.user.sub, inv.role]
-    );
-    await pool.query("UPDATE invitations SET status = 'accepted' WHERE id = $1", [inv.id]);
+        [inv.room_id, req.user.sub, inv.role]
+      );
+      await pool.query("UPDATE invitations SET status = 'accepted' WHERE id = $1", [inv.id]);
 
-    return ok(res, {
-      message: `Welcome to "${inv.workspaceName}"!`,
-      workspaceId: inv.room_id,
-      workspaceName: inv.workspaceName,
-    });
-  } catch (err) {
-    console.error("[Accept invitation]", err.message);
-    return fail(res, "Failed to accept invitation", 500);
-  }
-});
+      return ok(res, {
+        message: `Welcome to "${inv.workspaceName}"!`,
+        workspaceId: inv.room_id,
+        workspaceName: inv.workspaceName,
+      });
+    } catch (err) {
+      console.error("[Accept invitation]", err.message);
+      return fail(res, "Failed to accept invitation", 500);
+    }
+  });
 
-// POST /api/invitations/:id/reject
-app.post("/api/invitations/:id/reject", auth, async (req, res) => {
-  try {
-    const { rows: userRows } = await pool.query("SELECT email FROM users WHERE id = $1", [req.user.sub]);
-    if (!userRows[0]) return fail(res, "User not found", 404);
+  // POST /api/invitations/:id/reject
+  app.post("/api/invitations/:id/reject", auth, async (req, res) => {
+    try {
+      const { rows: userRows } = await pool.query("SELECT email FROM users WHERE id = $1", [req.user.sub]);
+      if (!userRows[0]) return fail(res, "User not found", 404);
 
-    const { rows } = await pool.query(
-      "UPDATE invitations SET status = 'rejected' WHERE id = $1 AND invited_email = $2 RETURNING id",
-      [req.params.id, userRows[0].email]
-    );
-    if (!rows[0]) return fail(res, "Invitation not found", 404);
-    return ok(res, { message: "Invitation rejected" });
-  } catch (err) {
-    return fail(res, "Failed to reject invitation", 500);
-  }
-});
+      const { rows } = await pool.query(
+        "UPDATE invitations SET status = 'rejected' WHERE id = $1 AND invited_email = $2 RETURNING id",
+        [req.params.id, userRows[0].email]
+      );
+      if (!rows[0]) return fail(res, "Invitation not found", 404);
+      return ok(res, { message: "Invitation rejected" });
+    } catch (err) {
+      return fail(res, "Failed to reject invitation", 500);
+    }
+  });
 
-const server = app.listen(PORT, "0.0.0.0", () => {
-  console.log(`API: http://localhost:${PORT}`);
-});
+  const server = app.listen(PORT, "0.0.0.0", () => {
+    console.log(`API: http://localhost:${PORT}`);
+  });
 
-// LSP WebSocket Server
-const lspWss = new WebSocketServer({ noServer: true });
+  // LSP WebSocket Server
+  const lspWss = new WebSocketServer({ noServer: true });
 
-server.on('upgrade', (request, socket, head) => {
-  const pathname = new URL(request.url, `http://${request.headers.host}`).pathname;
+  server.on('upgrade', (request, socket, head) => {
+    const pathname = new URL(request.url, `http://${request.headers.host}`).pathname;
 
-  if (pathname === '/lsp') {
-    lspWss.handleUpgrade(request, socket, head, (ws) => {
-      lspWss.emit('connection', ws, request);
-    });
-  } else if (pathname === '/terminal') {
-    wss.handleUpgrade(request, socket, head, (ws) => {
-      wss.emit('connection', ws, request);
-    });
-  } else {
-    socket.destroy();
-  }
-});
+    if (pathname === '/lsp') {
+      lspWss.handleUpgrade(request, socket, head, (ws) => {
+        lspWss.emit('connection', ws, request);
+      });
+    } else if (pathname === '/terminal') {
+      wss.handleUpgrade(request, socket, head, (ws) => {
+        wss.emit('connection', ws, request);
+      });
+    } else {
+      socket.destroy();
+    }
+  });
 
-lspWss.on('connection', async (ws, req) => {
-  const url = new URL(req.url, `http://${req.headers.host}`);
-  const workspaceId = url.searchParams.get('workspaceId');
-  const token = url.searchParams.get('token');
+  lspWss.on('connection', async (ws, req) => {
+    const url = new URL(req.url, `http://${req.headers.host}`);
+    const workspaceId = url.searchParams.get('workspaceId');
+    const token = url.searchParams.get('token');
 
-  if (!workspaceId || !token) {
-    ws.close(1008, 'Missing workspaceId or token');
-    return;
-  }
-
-  try {
-    jwt.verify(token, JWT_SECRET);
-    const repoDir = path.join(REPOS_DIR, workspaceId);
-    
-    // Ensure repo directory exists before starting LSP
-    if (!fs.existsSync(repoDir)) {
-      fs.mkdirSync(repoDir, { recursive: true });
+    if (!workspaceId || !token) {
+      ws.close(1008, 'Missing workspaceId or token');
+      return;
     }
 
-    // Sync files from DB to filesystem to ensure LSP has latest code
-    const files = await prisma.projectFile.findMany({ where: { workspaceId } });
-    for (const file of files) {
-      const filePath = path.join(repoDir, file.name);
-      const dirName = path.dirname(filePath);
-      if (!fs.existsSync(dirName)) fs.mkdirSync(dirName, { recursive: true });
-      fs.writeFileSync(filePath, file.content);
-    }
+    try {
+      jwt.verify(token, JWT_SECRET);
+      const repoDir = path.join(REPOS_DIR, workspaceId);
 
-    lspManager.startServer(workspaceId, repoDir, ws);
-
-  } catch (err) {
-    console.error('LSP WS Connection Error:', err);
-    ws.close(1008, 'Invalid token or internal error');
-  }
-});
-
-// Terminal WebSocket Server
-const wss = new WebSocketServer({ noServer: true });
-
-wss.on('connection', async (ws, req) => {
-  const url = new URL(req.url, `http://${req.headers.host}`);
-  const workspaceId = url.searchParams.get('workspaceId');
-  const token = url.searchParams.get('token');
-
-  if (!workspaceId || !token) {
-    ws.close(1008, 'Missing workspaceId or token');
-    return;
-  }
-
-  try {
-    // Verify token
-    const payload = jwt.verify(token, JWT_SECRET);
-    const userId = payload.sub;
-
-    // TODO: Verify user is member of workspace
-    
-    // For now, create a temporary directory for the workspace if it doesn't exist
-    const workspaceDir = path.join(process.cwd(), 'workspaces', workspaceId);
-    if (!fs.existsSync(workspaceDir)) {
-      fs.mkdirSync(workspaceDir, { recursive: true });
-    }
-
-    let session = terminalManager.getSession(workspaceId);
-    if (!session) {
-      session = await terminalManager.createSession(workspaceId, workspaceDir);
-      session.start();
-    }
-
-    const onData = (data) => ws.send(JSON.stringify({ type: 'data', data }));
-    const onExit = (code) => ws.send(JSON.stringify({ type: 'exit', code }));
-
-    session.on('data', onData);
-    session.on('exit', onExit);
-
-    ws.on('message', (message) => {
-      try {
-        const msg = JSON.parse(message);
-        if (msg.type === 'data') {
-          session.write(msg.data);
-        } else if (msg.type === 'resize') {
-          session.resize(msg.cols, msg.rows);
-        }
-      } catch (err) {
-        console.error('Terminal WS Message Error:', err);
+      // Ensure repo directory exists before starting LSP
+      if (!fs.existsSync(repoDir)) {
+        fs.mkdirSync(repoDir, { recursive: true });
       }
-    });
 
-    ws.on('close', () => {
-      session.removeListener('data', onData);
-      session.removeListener('exit', onExit);
-      // Optional: Kill session after delay or when no clients left
-    });
+      // Sync files from DB to filesystem to ensure LSP has latest code
+      const { rows: files } = await pool.query(
+        "SELECT name, content FROM project_files WHERE room_id = $1",
+        [workspaceId]
+      );
+      for (const file of files) {
+        const filePath = path.join(repoDir, file.name);
+        const dirName = path.dirname(filePath);
+        if (!fs.existsSync(dirName)) fs.mkdirSync(dirName, { recursive: true });
+        fs.writeFileSync(filePath, file.content);
+      }
 
-  } catch (err) {
-    console.error('Terminal WS Connection Error:', err);
-    ws.close(1008, 'Invalid token');
-  }
+      lspManager.startServer(workspaceId, repoDir, ws);
+
+    } catch (err) {
+      console.error('LSP WS Connection Error:', err);
+      ws.close(1008, 'Invalid token or internal error');
+    }
+  });
+
+  // Terminal WebSocket Server
+  const wss = new WebSocketServer({ noServer: true });
+
+  wss.on('connection', async (ws, req) => {
+    const url = new URL(req.url, `http://${req.headers.host}`);
+    const workspaceId = url.searchParams.get('workspaceId');
+    const token = url.searchParams.get('token');
+
+    if (!workspaceId || !token) {
+      ws.close(1008, 'Missing workspaceId or token');
+      return;
+    }
+
+    try {
+      // Verify token
+      const payload = jwt.verify(token, JWT_SECRET);
+      const userId = payload.sub;
+
+      // TODO: Verify user is member of workspace
+
+      // For now, create a temporary directory for the workspace if it doesn't exist
+      const workspaceDir = path.join(process.cwd(), 'workspaces', workspaceId);
+      if (!fs.existsSync(workspaceDir)) {
+        fs.mkdirSync(workspaceDir, { recursive: true });
+      }
+
+      let session = terminalManager.getSession(workspaceId);
+      if (!session) {
+        session = await terminalManager.createSession(workspaceId, workspaceDir);
+        session.start();
+      }
+
+      const onData = (data) => ws.send(JSON.stringify({ type: 'data', data }));
+      const onExit = (code) => ws.send(JSON.stringify({ type: 'exit', code }));
+
+      session.on('data', onData);
+      session.on('exit', onExit);
+
+      ws.on('message', (message) => {
+        try {
+          const msg = JSON.parse(message);
+          if (msg.type === 'data') {
+            session.write(msg.data);
+          } else if (msg.type === 'resize') {
+            session.resize(msg.cols, msg.rows);
+          }
+        } catch (err) {
+          console.error('Terminal WS Message Error:', err);
+        }
+      });
+
+      ws.on('close', () => {
+        session.removeListener('data', onData);
+        session.removeListener('exit', onExit);
+        // Optional: Kill session after delay or when no clients left
+      });
+
+    } catch (err) {
+      console.error('Terminal WS Connection Error:', err);
+      ws.close(1008, 'Invalid token');
+    }
+  });
+
+  // Keep process alive hack for sandbox
+  setInterval(() => { }, 10000);
 });
 
-// Keep process alive hack for sandbox
-setInterval(() => {}, 10000);
 // ─────────────────────────────────────────────
 // Join Request System
 // ─────────────────────────────────────────────
@@ -2660,8 +2411,8 @@ app.post("/api/workspaces/:id/session/start", auth, async (req, res) => {
 });
 
 
-// ─────────────────────────────────────────────
 
+// ─────────────────────────────────────────────
 // Global Error Handler
 // ─────────────────────────────────────────────
 app.use((err, req, res, _next) => {
@@ -2675,8 +2426,18 @@ app.use((req, res) => {
   res.status(404).json({ success: false, error: `Route ${req.method} ${req.path} not found` });
 });
 
-app.listen(PORT, () => {
+const httpServer = createServer(app);
+
+// WebSocket server for real-time collaboration on the same port
+const collabWss = new WebSocketServer({ server: httpServer, path: '/ws' });
+collabWss.on('connection', (ws, req) => {
+  ws.on('message', (msg) => { /* handled by client room logic */ });
+  ws.on('close', () => { /* cleanup handled by terminalManager */ });
+});
+
+httpServer.listen(PORT, () => {
   console.log(`✅ API running at http://localhost:${PORT}`);
 });
 
 setInterval(() => { }, 10_000);
+

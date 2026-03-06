@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ShieldCheck, AlertTriangle, AlertCircle, Info, Copy, CornerDownLeft, RefreshCw, ChevronDown, ChevronRight, Sparkles } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/UI/button";
 import { cn } from "@/lib/utils";
 import { useAIStore, ReviewIssue } from "@/features/ai/aiStore";
 import { aiService } from "@/features/ai/aiService";

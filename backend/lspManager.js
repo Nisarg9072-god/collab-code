@@ -1,7 +1,7 @@
 import { spawn } from 'child_process';
 import path from 'path';
-import { createWebSocketConnection } from 'vscode-ws-jsonrpc/server/index.js';
-import { StreamMessageReader, StreamMessageWriter } from 'vscode-languageserver-types';
+import { createWebSocketConnection } from 'vscode-ws-jsonrpc/server';
+import { StreamMessageReader, StreamMessageWriter } from 'vscode-jsonrpc/node.js';
 
 class LSPProcessManager {
   constructor() {
@@ -16,7 +16,7 @@ class LSPProcessManager {
     }
 
     console.log(`LSP: Starting typescript-language-server for workspace ${workspaceId}`);
-    
+
     // Using npx to ensure we find the installed server
     const serverProcess = spawn('npx', ['typescript-language-server', '--stdio'], {
       cwd: repoDir,

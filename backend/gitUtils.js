@@ -1,9 +1,11 @@
 import { spawn } from 'child_process';
 import fs from 'fs/promises';
 import path from 'path';
+import { fileURLToPath } from 'url';
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 const REPOS_DIR = path.join(__dirname, 'repos');
-
 // Function to execute a shell command and return the output
 const execShellCommand = (cmd, options) => {
   return new Promise((resolve, reject) => {
