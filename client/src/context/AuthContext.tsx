@@ -4,6 +4,9 @@ import { api } from "@/lib/api";
 interface User {
   id: string;
   email: string;
+  displayName?: string;
+  createdAt?: string;
+  /** @deprecated use displayName */
   name?: string;
 }
 
