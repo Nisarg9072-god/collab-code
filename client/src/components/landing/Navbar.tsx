@@ -1,6 +1,6 @@
 import { Link, useNavigate } from "react-router-dom";
 import Logo from "@/components/Logo";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/UI/button";
 import { useAuth } from "@/context/AuthContext";
 import {
   DropdownMenu,
@@ -9,8 +9,8 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+} from "@/components/UI/dropdown-menu";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/UI/avatar";
 import { User, LogOut, LayoutDashboard } from "lucide-react";
 import { Sun, Moon } from "lucide-react";
 import { useTheme } from "next-themes";
@@ -66,6 +66,11 @@ const Navbar = () => {
           </div>
 
           <div className="flex items-center gap-4">
+            <Link to="/pricing" className="hidden md:block">
+              <Button variant="outline" className="border-primary/40 text-primary hover:bg-primary/10">
+                Upgrade
+              </Button>
+            </Link>
             <Button
               variant="ghost"
               size="icon"

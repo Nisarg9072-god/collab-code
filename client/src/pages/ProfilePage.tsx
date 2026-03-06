@@ -1,4 +1,9 @@
 import { useAuth } from "@/context/AuthContext";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/UI/card";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/UI/avatar";
+import { Button } from "@/components/UI/button";
+import { Calendar, Mail, User as UserIcon } from "lucide-react";
+import { AuthLayout } from "@/components/auth/AuthLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -96,6 +101,11 @@ export default function ProfilePage() {
             </Button>
           </CardContent>
         </Card>
+        <div className="mt-6 flex justify-center">
+          <Button onClick={() => (window.location.href = "/pricing")}>
+            Upgrade
+          </Button>
+        </div>
       </div>
     </div>
   );

@@ -1,10 +1,11 @@
-import { Toaster } from "@/components/ui/toaster";
-import { Toaster as Sonner } from "@/components/ui/sonner";
-import { TooltipProvider } from "@/components/ui/tooltip";
+import React, { useEffect } from "react";
+import { Toaster } from "@/components/UI/toaster";
+import { Toaster as Sonner } from "@/components/UI/sonner";
+import { TooltipProvider } from "@/components/UI/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ThemeProvider } from "next-themes";
 import { AuthProvider } from "@/context/AuthContext";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, useLocation, useNavigate } from "react-router-dom";
 import Index from "./pages/Index";
 import LoginPage from "./pages/auth/LoginPage";
 import RegisterPage from "./pages/auth/RegisterPage";
@@ -16,18 +17,70 @@ import ProfilePage from "./pages/ProfilePage";
 import NotFound from "./pages/NotFound";
 import { useAuth } from "./context/AuthContext";
 import { Navigate } from "react-router-dom";
+import DemoReturnDialog from "@/components/demo/DemoReturnDialog";
+import PricingPage from "./pages/PricingPage";
+import SuccessPage from "./pages/SuccessPage";
+
+function RedirectAfterLogin() {
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  useEffect(() => {
+    if (user) {
+      const target = sessionStorage.getItem("cc.redirectAfterLogin");
+      if (target) {
+        sessionStorage.removeItem("cc.redirectAfterLogin");
+        navigate(target);
+      }
+    }
+  }, [user, navigate]);
+  return null;
+}
 
 // Protected Route Component
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { user, loading } = useAuth();
-  
-  if (loading) return null; // Or a loading spinner
+  const location = useLocation();
+  const sp = new URLSearchParams(location.search);
+  const demo =
+    sp.get("demo") === "true" ||
+    (typeof window !== "undefined" && (sessionStorage.getItem("cc.demo") === "true" || localStorage.getItem("demoMode") === "true"));
+  if (demo) return <>{children}</>;
+  if (loading) return null;
   if (!user) return <Navigate to="/login" replace />;
-  
   return <>{children}</>;
 };
 
 const queryClient = new QueryClient();
+
+function DemoNotice() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const demo =
+    new URLSearchParams(location.search).get("demo") === "true" ||
+    (typeof window !== "undefined" && (sessionStorage.getItem("cc.demo") === "true" || localStorage.getItem("demoMode") === "true"));
+  if (demo) {
+    if (typeof window !== "undefined" && new URLSearchParams(location.search).get("demo") === "true") {
+      sessionStorage.setItem("cc.demo", "true");
+      localStorage.setItem("demoMode", "true");
+    }
+  }
+  if (!demo) return null;
+  return (
+    <div className="w-full text-xs text-amber-800 bg-amber-100 border-b border-amber-200 px-3 py-1 flex items-center justify-center gap-3">
+      <span>Demo Mode — Your data will not be saved permanently.</span>
+      <button
+        className="underline text-amber-900 hover:text-amber-700"
+        onClick={() => {
+          sessionStorage.removeItem("cc.demo");
+          localStorage.removeItem("demoMode");
+          navigate("/login");
+        }}
+      >
+        Login to Save Work
+      </button>
+    </div>
+  );
+}
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
@@ -37,8 +90,13 @@ const App = () => (
       <AuthProvider>
         <ThemeProvider attribute="class" defaultTheme="light" enableSystem storageKey="theme">
           <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+            <DemoNotice />
+            <DemoReturnDialog />
+            <RedirectAfterLogin />
             <Routes>
               <Route path="/" element={<Index />} />
+              <Route path="/pricing" element={<PricingPage />} />
+              <Route path="/payment-success" element={<SuccessPage />} />
               <Route path="/login" element={<LoginPage />} />
               <Route path="/register" element={<RegisterPage />} />
               <Route path="/dashboard" element={

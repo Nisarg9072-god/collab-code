@@ -37,6 +37,24 @@ const HeroSection = () => {
               <ArrowRight className="h-4 w-4" />
             </Button>
           </Link>
+          <Button
+            size="lg"
+            variant="secondary"
+            className="text-base px-8"
+            onClick={() => {
+              try {
+                if (typeof window !== "undefined") {
+                  sessionStorage.setItem("cc.demo", "true");
+                  localStorage.setItem("demoMode", "true");
+                }
+              } catch {}
+              if (typeof window !== "undefined") {
+                window.location.href = "/dashboard";
+              }
+            }}
+          >
+            Use Demo
+          </Button>
         </div>
 
         <p className="mt-6 text-sm text-muted-foreground">
