@@ -13,6 +13,7 @@ import { Loader2 } from "lucide-react";
 export default function RegisterPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [displayName, setDisplayName] = useState("");
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -23,13 +24,10 @@ export default function RegisterPage() {
     if (loading) return;
     setLoading(true);
     try {
-      // 1. Register
-      await api.auth.register({ email, password });
+      await api.auth.register({ email, password, display_name: displayName || null });
       
-      // 2. Auto-login on success (per strict requirements)
       const loginData = await api.auth.login({ email, password });
       
-      // Manually set token then fetch user to populate context
       localStorage.setItem("token", loginData.token);
       const user = await api.auth.me();
       login(loginData.token, user);
@@ -70,6 +68,20 @@ export default function RegisterPage() {
         }
       >
         <form onSubmit={handleRegister} className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="display_name" className="text-white">
+              Display Name
+            </Label>
+            <Input
+              id="display_name"
+              type="text"
+              placeholder="Your name"
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+              disabled={loading}
+              className="bg-white/5 border-white/10 text-white placeholder:text-white/40 focus:border-cyan-500/50 focus:ring-cyan-500/20 transition-all duration-200"
+            />
+          </div>
           <div className="space-y-2">
             <Label htmlFor="email" className="text-white">
               Email

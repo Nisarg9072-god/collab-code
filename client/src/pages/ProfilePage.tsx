@@ -4,16 +4,23 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/UI/avatar";
 import { Button } from "@/components/UI/button";
 import { Calendar, Mail, User as UserIcon } from "lucide-react";
 import { AuthLayout } from "@/components/auth/AuthLayout";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
+import { Calendar, Mail, User as UserIcon, Tag } from "lucide-react";
 
 export default function ProfilePage() {
   const { user } = useAuth();
 
-  // If user is not loaded yet (protected route handles redirection, but for safety)
   if (!user) return null;
+
+  const displayName = user.displayName || user.name;
+  const memberSince = user.createdAt
+    ? new Date(user.createdAt).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })
+    : "Unknown";
 
   return (
     <div className="min-h-screen w-full relative overflow-hidden flex items-center justify-center p-4">
-      {/* Background Effect */}
       <div className="fixed inset-0 z-0">
         <div className="absolute inset-0 bg-gradient-to-br from-background via-background/95 to-background/90" />
         <div className="absolute top-0 left-1/4 w-96 h-96 bg-teal-500/10 rounded-full blur-[128px]" />
@@ -28,16 +35,18 @@ export default function ProfilePage() {
               <Avatar className="h-24 w-24 border-2 border-white/20 relative">
                 <AvatarImage src="/avatars/01.png" alt={user.email} />
                 <AvatarFallback className="text-2xl bg-gradient-to-br from-teal-500 to-cyan-500 text-white">
-                  {user.email.charAt(0).toUpperCase()}
+                  {(displayName || user.email).charAt(0).toUpperCase()}
                 </AvatarFallback>
               </Avatar>
             </div>
             <CardTitle className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-white/80">
-              My Profile
+              {displayName || "My Profile"}
             </CardTitle>
           </CardHeader>
+
           <CardContent className="space-y-6">
             <div className="space-y-4">
+              {/* Email */}
               <div className="group flex items-center gap-4 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-teal-500/30 transition-colors">
                 <div className="p-2 rounded-md bg-teal-500/10 text-teal-500 group-hover:text-teal-400 transition-colors">
                   <Mail className="h-5 w-5" />
@@ -48,6 +57,20 @@ export default function ProfilePage() {
                 </div>
               </div>
 
+              {/* Display Name (if set) */}
+              {displayName && (
+                <div className="group flex items-center gap-4 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-teal-500/30 transition-colors">
+                  <div className="p-2 rounded-md bg-teal-500/10 text-teal-500 group-hover:text-teal-400 transition-colors">
+                    <Tag className="h-5 w-5" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Display Name</p>
+                    <p className="text-sm font-medium">{displayName}</p>
+                  </div>
+                </div>
+              )}
+
+              {/* User ID */}
               <div className="group flex items-center gap-4 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-teal-500/30 transition-colors">
                 <div className="p-2 rounded-md bg-teal-500/10 text-teal-500 group-hover:text-teal-400 transition-colors">
                   <UserIcon className="h-5 w-5" />
@@ -58,20 +81,19 @@ export default function ProfilePage() {
                 </div>
               </div>
 
-              {/* Created At - Mocked for now as it wasn't in the initial user object, 
-                  but can be added if backend returns it */}
+              {/* Member Since */}
               <div className="group flex items-center gap-4 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-teal-500/30 transition-colors">
                 <div className="p-2 rounded-md bg-teal-500/10 text-teal-500 group-hover:text-teal-400 transition-colors">
                   <Calendar className="h-5 w-5" />
                 </div>
                 <div className="flex-1">
                   <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Member Since</p>
-                  <p className="text-sm font-medium text-white/70">February 2026</p>
+                  <p className="text-sm font-medium text-white/70">{memberSince}</p>
                 </div>
               </div>
             </div>
 
-            <Button 
+            <Button
               className="w-full bg-white/5 hover:bg-white/10 text-muted-foreground hover:text-white border border-white/10"
               disabled
             >
