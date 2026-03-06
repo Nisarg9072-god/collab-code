@@ -68,17 +68,28 @@ const safeFetch = async (url: string, options?: RequestInit) => {
 
 export const api = {
   billing: {
-    createOrder: async (plan: "PRO" | "PREMIUM" | "ULTRA") => {
-      // Allow order creation only if not in demo mode and plan is payable
-      const url = `${API_URL}/create-order`;
+    createOrder: async (amount: number) => {
+      const url = `${API_URL}/payment/create-order`;
       const response = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ plan }),
+        body: JSON.stringify({ amount }),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Failed to create order");
       return data;
+    },
+    verifyPayment: async (paymentData: { 
+      razorpay_order_id: string; 
+      razorpay_payment_id: string; 
+      razorpay_signature: string;
+      plan: string;
+    }) => {
+      return safeFetch(`${API_URL}/payment/verify-payment`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(paymentData),
+      });
     }
   },
   auth: {

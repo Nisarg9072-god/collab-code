@@ -4,9 +4,11 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/UI/avatar";
 import { Button } from "@/components/UI/button";
 import { Calendar, Mail, User as UserIcon } from "lucide-react";
 import { AuthLayout } from "@/components/auth/AuthLayout";
+import { useNavigate } from "react-router-dom";
 
 export default function ProfilePage() {
   const { user } = useAuth();
+  const navigate = useNavigate();
 
   // If user is not loaded yet (protected route handles redirection, but for safety)
   if (!user) return null;
@@ -80,7 +82,7 @@ export default function ProfilePage() {
           </CardContent>
         </Card>
         <div className="mt-6 flex justify-center">
-          <Button onClick={() => (window.location.href = "/pricing")}>
+          <Button onClick={() => navigate("/pricing")}>
             Upgrade
           </Button>
         </div>

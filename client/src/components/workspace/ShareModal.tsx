@@ -11,6 +11,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { useState } from "react";
 import { api } from "@/lib/api";
+import { useNavigate } from "react-router-dom";
 
 interface ShareModalProps {
   open: boolean;
@@ -20,6 +21,7 @@ interface ShareModalProps {
 
 const ShareModal = ({ open, onOpenChange, workspaceId }: ShareModalProps) => {
   const { toast } = useToast();
+  const navigate = useNavigate();
   const inviteLink = `${window.location.origin}/workspace/${workspaceId}`;
   const [invitee, setInvitee] = useState("");
 
@@ -81,7 +83,12 @@ const ShareModal = ({ open, onOpenChange, workspaceId }: ShareModalProps) => {
                     toast({
                       variant: "destructive",
                       title: "Member limit reached",
-                      description: "Member limit reached for your plan. Upgrade to add more collaborators.",
+                      description: "Upgrade your plan to add more collaborators.",
+                      action: (
+                        <Button variant="outline" size="sm" onClick={() => navigate("/pricing")}>
+                          Upgrade
+                        </Button>
+                      ),
                     });
                     return;
                   }

@@ -39,7 +39,11 @@ export default function RegisterPage() {
         description: "Welcome to CollabCode.",
       });
       try { sessionStorage.removeItem("cc.demo"); localStorage.removeItem("demoMode"); } catch {}
-      navigate("/dashboard");
+      
+      // Step 8: Handle redirect after register for demo users
+      const redirectPath = sessionStorage.getItem("cc.redirectAfterLogin") || "/dashboard";
+      sessionStorage.removeItem("cc.redirectAfterLogin");
+      navigate(redirectPath);
     } catch (err: any) {
       localStorage.removeItem("token");
       toast({

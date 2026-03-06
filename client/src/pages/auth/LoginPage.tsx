@@ -41,7 +41,11 @@ export default function LoginPage() {
         description: "You have successfully logged in.",
       });
       try { sessionStorage.removeItem("cc.demo"); localStorage.removeItem("demoMode"); } catch {}
-      navigate("/dashboard");
+      
+      // Step 8: Handle redirect after login for demo users
+      const redirectPath = sessionStorage.getItem("cc.redirectAfterLogin") || "/dashboard";
+      sessionStorage.removeItem("cc.redirectAfterLogin");
+      navigate(redirectPath);
     } catch (err: any) {
       localStorage.removeItem("token"); // Cleanup on failure if partial
       toast({

@@ -2,15 +2,15 @@ import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { api } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/UI/button";
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/UI/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/UI/tabs";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/UI/avatar";
 import { Badge } from "@/components/UI/badge";
 import { Skeleton } from "@/components/UI/skeleton";
 import { toast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/UI/dialog";
-import { Input } from "@/components/ui/input";
+import { Input } from "@/components/UI/input";
 import { ArrowLeft, Users, Settings, Layout, Trash2, LogOut, Code, Copy, Check, Shield, ShieldAlert, Loader2, Edit2, Activity, FileText, Plus } from "lucide-react";
 
 interface File {
@@ -19,7 +19,7 @@ interface File {
   language: string;
   updatedAt?: string;
 }
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuLabel, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuLabel, DropdownMenuSeparator } from "@/components/UI/dropdown-menu";
 
 interface Member {
   id: string;
@@ -113,6 +113,30 @@ export default function WorkspaceDetail() {
   const handleInvite = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!id || !inviteEmail) return;
+
+    // Enforce collaborator limits by plan
+    const plan = (localStorage.getItem("cc.plan") || "FREE").toUpperCase();
+    const limits: Record<string, number> = {
+      FREE: 6,
+      PRO: 6,
+      PREMIUM: 8,
+      ULTRA: 10,
+    };
+    const maxMembers = limits[plan] ?? 6;
+    const currentCount = workspace?.members?.length ?? 0;
+    if (currentCount >= maxMembers) {
+      toast({
+        variant: "destructive",
+        title: "Collaboration limit reached",
+        description: "Upgrade your plan to add more collaborators",
+        action: (
+          <Button variant="outline" size="sm" onClick={() => navigate("/pricing")}>
+            Upgrade
+          </Button>
+        ),
+      });
+      return;
+    }
 
     setInviting(true);
     try {
@@ -577,6 +601,15 @@ export default function WorkspaceDetail() {
                                 <CardDescription>Manage workspace preferences and danger zone.</CardDescription>
                             </CardHeader>
                             <CardContent className="space-y-6">
+                                <div className="flex items-center justify-between p-4 rounded-lg border border-border bg-muted/20">
+                                    <div>
+                                        <p className="text-sm text-muted-foreground">Current Plan</p>
+                                        <p className="text-foreground font-medium">{(localStorage.getItem("cc.plan") || "FREE").toUpperCase()}</p>
+                                    </div>
+                                    <Button onClick={() => navigate("/pricing")} variant="outline" className="border-teal-500/50 text-teal-500 hover:bg-teal-500/10">
+                                        Upgrade
+                                    </Button>
+                                </div>
                                 <div className="space-y-4">
                                     <div className="flex flex-col gap-2">
                                         <label className="text-sm font-medium text-foreground">Workspace Name</label>
