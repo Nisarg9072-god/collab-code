@@ -40,6 +40,7 @@ export default function LoginPage() {
         title: "Welcome back!",
         description: "You have successfully logged in.",
       });
+      try { sessionStorage.removeItem("cc.demo"); localStorage.removeItem("demoMode"); } catch {}
       navigate("/dashboard");
     } catch (err: any) {
       localStorage.removeItem("token"); // Cleanup on failure if partial

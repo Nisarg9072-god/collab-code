@@ -38,6 +38,7 @@ export default function RegisterPage() {
         title: "Account created!",
         description: "Welcome to CollabCode.",
       });
+      try { sessionStorage.removeItem("cc.demo"); localStorage.removeItem("demoMode"); } catch {}
       navigate("/dashboard");
     } catch (err: any) {
       localStorage.removeItem("token");

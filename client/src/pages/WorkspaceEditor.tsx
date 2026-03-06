@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useLocation } from "react-router-dom";
 import { formatDistanceToNow } from "date-fns";
 import TopBar from "@/components/workspace/TopBar";
 import SidePanel from "@/components/workspace/SidePanel";
@@ -83,6 +83,8 @@ const WorkspaceEditor = () => {
     endColumn: number;
   }>>([]);
   const [aiPrompt, setAiPrompt] = useState("");
+  const location = useLocation();
+  const demoActive = new URLSearchParams(location.search).get("demo") === "true" || sessionStorage.getItem("cc.demo") === "true";
 
 
   const MOCK_PARTICIPANTS = [

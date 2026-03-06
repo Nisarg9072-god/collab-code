@@ -12,10 +12,13 @@ import fs from "fs";
 import path from "path";
 import { spawn } from "child_process";
 
+import dotenv from "dotenv";
+dotenv.config();
 /**
  * @swagger
  * tags:
  *   - name: Auth
+ *     description: Authentication and user identity
  *     description: Authentication and user identity
  *   - name: Documents
  *     description: Document lifecycle and access control
