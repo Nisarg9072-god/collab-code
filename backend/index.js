@@ -13,6 +13,18 @@ import AdmZip from "adm-zip";
 import fs from "fs";
 import path from "path";
 import { spawn } from "child_process";
+import { WebSocketServer } from 'ws';
+import { terminalManager } from './terminalManager.js';
+import { runGitCommand } from './gitUtils.js';
+import { lspManager } from './lspManager.js';
+import { aiManager } from './aiManager.js';
+import { buildPrompt } from './promptBuilders.js';
+import { createServer } from 'http';
+import { URL } from 'url';
+
+const __filename = new URL(import.meta.url).pathname;
+const __dirname = path.dirname(__filename);
+const REPOS_DIR = path.join(__dirname, 'repos');
 
 /**
  * @swagger
@@ -58,6 +70,17 @@ if (process.env.DATABASE_URL && process.env.DATABASE_URL.includes("sslmode")) {
 
 const PORT = process.env.PORT || 3001;
 const JWT_SECRET = process.env.JWT_SECRET || "supersecret";
+const DEMO_AUTH = process.env.DEMO_AUTH === "true";
+if (DEMO_AUTH) {
+  console.log("Auth: DEMO_AUTH enabled (no DB required for login/register)");
+}
+const demoStore = {
+  workspaces: new Map(),
+  members: new Map(),
+  files: new Map(),
+  activities: new Map()
+};
+const demoId = (p = "id") => `${p}_${Math.random().toString(36).slice(2, 8)}${Date.now().toString(36)}`;
 
 // Middleware
 app.use(helmet());
@@ -164,7 +187,15 @@ app.get("/api/health/users", async (req, res) => {
 app.post("/api/auth/register", async (req, res, next) => {
   try {
     const { email, password } = registerSchema.parse(req.body);
-    
+    if (DEMO_AUTH) {
+      const demoId = `demo_${Buffer.from(email).toString("hex").slice(0, 16)}`;
+      const token = jwt.sign({ sub: demoId, email }, JWT_SECRET, { expiresIn: "1h" });
+      return res.status(201).json({
+        token,
+        user: { id: demoId, email }
+      });
+    }
+
     // Check if user exists
     const existing = await prisma.user.findUnique({ where: { email } });
     if (existing) {
@@ -189,8 +220,14 @@ app.post("/api/auth/register", async (req, res, next) => {
     });
   } catch (err) {
     console.error("[Auth Error] Register failed:", err);
-    if (err.code === 'P1001' || err.message.includes('Can\'t reach database')) {
-      return res.status(503).json({ error: "Database connection failed. Please check if PostgreSQL is running." });
+    const msg = String(err && err.message ? err.message : "");
+    if (
+      err.code === 'P1001' ||
+      err.code === 'P1000' ||
+      msg.includes("Can't reach database") ||
+      msg.includes("Authentication failed against database server")
+    ) {
+      return res.status(503).json({ error: "Database connection failed. Please check credentials and that PostgreSQL is running." });
     }
     res.status(500).json({ error: "server error" });
   }
@@ -200,6 +237,15 @@ app.post("/api/auth/register", async (req, res, next) => {
 app.post("/api/auth/login", async (req, res, next) => {
   try {
     const { email, password } = loginSchema.parse(req.body);
+    if (DEMO_AUTH) {
+      const demoId = `demo_${Buffer.from(email).toString("hex").slice(0, 16)}`;
+      const token = jwt.sign({ sub: demoId, email }, JWT_SECRET, { expiresIn: "1h" });
+      console.log(`[Auth] Demo user logged in: ${demoId}`);
+      return res.json({
+        token,
+        user: { id: demoId, email }
+      });
+    }
     const user = await prisma.user.findUnique({ where: { email } });
     
     if (!user) {
@@ -222,9 +268,371 @@ app.post("/api/auth/login", async (req, res, next) => {
     });
   } catch (err) {
     console.error("[Auth Error] Login failed:", err);
-    if (err.code === 'P1001' || err.message.includes('Can\'t reach database')) {
-      return res.status(503).json({ error: "Database connection failed. Please check if PostgreSQL is running." });
+    const msg = String(err && err.message ? err.message : "");
+    if (
+      err.code === 'P1001' ||
+      err.code === 'P1000' ||
+      msg.includes("Can't reach database") ||
+      msg.includes("Authentication failed against database server")
+    ) {
+      return res.status(503).json({ error: "Database connection failed. Please check credentials and that PostgreSQL is running." });
     }
+    next(err);
+  }
+});
+
+// --- AI APIs ---
+
+app.post("/api/ai/ask", auth, async (req, res, next) => {
+  try {
+    const { action, context } = req.body;
+    if (!action || !context) {
+      return res.status(400).json({ error: "Missing action or context" });
+    }
+
+    const prompt = buildPrompt(action, context);
+    const response = await aiManager.generateResponse(prompt, context);
+    
+    res.json({ response });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Code Review – returns structured JSON issues
+app.post("/api/ai/review", auth, async (req, res, next) => {
+  try {
+    const { code, language, fileName, workspaceId, fileList, workspaceName } = req.body;
+    if (!code || !language || !fileName) {
+      return res.status(400).json({ error: "Missing code, language, or fileName" });
+    }
+
+    const prompt = buildPrompt('review', { 
+      fullCode: code, language, fileName, workspaceId, fileList, workspaceName 
+    });
+    const rawResponse = await aiManager.generateResponse(prompt, {});
+
+    // Try to extract JSON from the response (AI may wrap it in markdown)
+    let issues = [];
+    let parseError = null;
+    try {
+      // Strip any markdown code fences the model may have added
+      const cleaned = rawResponse.replace(/^```(?:json)?\n?/i, '').replace(/\n?```\s*$/i, '').trim();
+      issues = JSON.parse(cleaned);
+      if (!Array.isArray(issues)) issues = [];
+    } catch (e) {
+      parseError = rawResponse; // surface the raw text so UI can display it
+    }
+
+    res.json({ issues, parseError });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// AI Commit Message – returns 1-3 concise commit message suggestions from diff
+app.post("/api/ai/commit-message", auth, async (req, res, next) => {
+  try {
+    const { changedFiles, diffSummary } = req.body;
+    if (!changedFiles || !Array.isArray(changedFiles)) {
+      return res.status(400).json({ error: "Missing changedFiles array" });
+    }
+
+    const prompt = buildPrompt('commitMessage', { changedFiles, diffSummary: diffSummary || '' });
+    const rawResponse = await aiManager.generateResponse(prompt, {});
+
+    let suggestions = [];
+    let parseError = null;
+    try {
+      const cleaned = rawResponse.replace(/^```(?:json)?\n?/i, '').replace(/\n?```\s*$/i, '').trim();
+      suggestions = JSON.parse(cleaned);
+      if (!Array.isArray(suggestions)) suggestions = [];
+      // Ensure we only keep string items and at most 3
+      suggestions = suggestions.filter(s => typeof s === 'string').slice(0, 3);
+    } catch (e) {
+      parseError = rawResponse;
+    }
+
+    res.json({ suggestions, parseError });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// AI Semantic Search – intent-based file relevance ranking
+app.post("/api/ai/semantic-search", auth, async (req, res, next) => {
+  try {
+    const { query, fileList, workspaceId, workspaceName } = req.body;
+    if (!query || !fileList || !Array.isArray(fileList)) {
+      return res.status(400).json({ error: "Missing query or fileList" });
+    }
+
+    const prompt = buildPrompt('semanticSearch', { query, fileList, workspaceName: workspaceName || '' });
+    const rawResponse = await aiManager.generateResponse(prompt, {});
+
+    let matches = [];
+    let parseError = null;
+    try {
+      const cleaned = rawResponse.replace(/^```(?:json)?\n?/i, '').replace(/\n?```\s*$/i, '').trim();
+      matches = JSON.parse(cleaned);
+      if (!Array.isArray(matches)) matches = [];
+      // Validate shape and clamp to 8
+      matches = matches
+        .filter(m => m && typeof m.fileName === 'string' && typeof m.reason === 'string')
+        .slice(0, 8);
+    } catch (e) {
+      parseError = rawResponse;
+    }
+
+    res.json({ matches, parseError });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Multi-file AI Review – cross-file issues, architecture concerns, integration risks
+app.post("/api/ai/multi-review", auth, async (req, res, next) => {
+  try {
+    const { currentFile, relatedFiles } = req.body;
+    if (!currentFile || !currentFile.name) {
+      return res.status(400).json({ error: "Missing currentFile" });
+    }
+
+    const prompt = buildPrompt('multiFileReview', { currentFile, relatedFiles: relatedFiles || [] });
+    const rawResponse = await aiManager.generateResponse(prompt, {});
+
+    let result = null;
+    let parseError = null;
+    try {
+      const cleaned = rawResponse.replace(/^```(?:json)?\n?/i, '').replace(/\n?```\s*$/i, '').trim();
+      result = JSON.parse(cleaned);
+      // Validate and normalise the shape
+      if (typeof result !== 'object' || Array.isArray(result)) result = null;
+      if (result) {
+        result.crossFileIssues = Array.isArray(result.crossFileIssues) ? result.crossFileIssues : [];
+        result.architectureSuggestions = Array.isArray(result.architectureSuggestions) ? result.architectureSuggestions : [];
+        result.integrationRisks = Array.isArray(result.integrationRisks) ? result.integrationRisks : [];
+        result.summary = typeof result.summary === 'string' ? result.summary : '';
+      }
+    } catch (e) {
+      parseError = rawResponse;
+    }
+
+    res.json({ result, parseError });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Project / Module Summary – high-level explanation, key files, flows, risks
+app.post("/api/ai/project-summary", auth, async (req, res, next) => {
+  try {
+    const { workspaceName, fileList, currentFileName } = req.body;
+    if (!fileList || !Array.isArray(fileList)) {
+      return res.status(400).json({ error: "Missing fileList" });
+    }
+
+    const prompt = buildPrompt('projectSummary', { workspaceName: workspaceName || '', fileList, currentFileName: currentFileName || '' });
+    const rawResponse = await aiManager.generateResponse(prompt, {});
+
+    let summary = null;
+    let parseError = null;
+    try {
+      const cleaned = rawResponse.replace(/^```(?:json)?\n?/i, '').replace(/\n?```\s*$/i, '').trim();
+      summary = JSON.parse(cleaned);
+      if (typeof summary !== 'object' || Array.isArray(summary)) summary = null;
+      if (summary) {
+        summary.mainFiles = Array.isArray(summary.mainFiles) ? summary.mainFiles.slice(0, 8) : [];
+        summary.keyFlows = Array.isArray(summary.keyFlows) ? summary.keyFlows : [];
+        summary.risks = Array.isArray(summary.risks) ? summary.risks : [];
+        summary.nextSteps = Array.isArray(summary.nextSteps) ? summary.nextSteps : [];
+        summary.overview = typeof summary.overview === 'string' ? summary.overview : '';
+      }
+    } catch (e) {
+      parseError = rawResponse;
+    }
+
+    res.json({ summary, parseError });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PR Summary – title, summary, key changes, test checklist, risks
+app.post("/api/ai/pr-summary", auth, async (req, res, next) => {
+  try {
+    const { changedFiles, diffSummary, branchName, workspaceName } = req.body;
+    if (!changedFiles || !Array.isArray(changedFiles)) {
+      return res.status(400).json({ error: "Missing changedFiles array" });
+    }
+
+    const prompt = buildPrompt('prSummary', { changedFiles, diffSummary: diffSummary || '', branchName: branchName || '', workspaceName: workspaceName || '' });
+    const rawResponse = await aiManager.generateResponse(prompt, {});
+
+    let result = null;
+    let parseError = null;
+    try {
+      const cleaned = rawResponse.replace(/^```(?:json)?\n?/i, '').replace(/\n?```\s*$/i, '').trim();
+      result = JSON.parse(cleaned);
+      if (typeof result !== 'object' || Array.isArray(result)) result = null;
+      if (result) {
+        result.title = typeof result.title === 'string' ? result.title : '';
+        result.summary = typeof result.summary === 'string' ? result.summary : '';
+        result.keyChanges = Array.isArray(result.keyChanges) ? result.keyChanges : [];
+        result.testingChecklist = Array.isArray(result.testingChecklist) ? result.testingChecklist : [];
+        result.risksAndNotes = Array.isArray(result.risksAndNotes) ? result.risksAndNotes : [];
+      }
+    } catch (e) {
+      parseError = rawResponse;
+    }
+
+    res.json({ result, parseError });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Release Notes – summary, features, fixes, improvements, known issues, upgrade notes
+app.post("/api/ai/release-notes", auth, async (req, res, next) => {
+  try {
+    const { commitMessages, diffSummary, version, workspaceName } = req.body;
+
+    const prompt = buildPrompt('releaseNotes', {
+      commitMessages: commitMessages || [],
+      diffSummary: diffSummary || '',
+      version: version || '',
+      workspaceName: workspaceName || ''
+    });
+    const rawResponse = await aiManager.generateResponse(prompt, {});
+
+    let result = null;
+    let parseError = null;
+    try {
+      const cleaned = rawResponse.replace(/^```(?:json)?\n?/i, '').replace(/\n?```\s*$/i, '').trim();
+      result = JSON.parse(cleaned);
+      if (typeof result !== 'object' || Array.isArray(result)) result = null;
+      if (result) {
+        result.releaseSummary = typeof result.releaseSummary === 'string' ? result.releaseSummary : '';
+        result.features = Array.isArray(result.features) ? result.features : [];
+        result.fixes = Array.isArray(result.fixes) ? result.fixes : [];
+        result.improvements = Array.isArray(result.improvements) ? result.improvements : [];
+        result.knownIssues = Array.isArray(result.knownIssues) ? result.knownIssues : [];
+        result.upgradeNotes = Array.isArray(result.upgradeNotes) ? result.upgradeNotes : [];
+      }
+    } catch (e) {
+      parseError = rawResponse;
+    }
+
+    res.json({ result, parseError });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Repo Health Review – score, arch concerns, maintainability, testing, consistency, recommendations
+app.post("/api/ai/repo-health", auth, async (req, res, next) => {
+  try {
+    const { workspaceName, fileList, projectSummary, commitMessages } = req.body;
+    if (!fileList || !Array.isArray(fileList)) {
+      return res.status(400).json({ error: "Missing fileList array" });
+    }
+
+    const prompt = buildPrompt('repoHealth', {
+      workspaceName: workspaceName || '',
+      fileList,
+      projectSummary: projectSummary || '',
+      commitMessages: commitMessages || []
+    });
+    const rawResponse = await aiManager.generateResponse(prompt, {});
+
+    let result = null;
+    let parseError = null;
+    try {
+      const cleaned = rawResponse.replace(/^```(?:json)?\n?/i, '').replace(/\n?```\s*$/i, '').trim();
+      result = JSON.parse(cleaned);
+      if (typeof result !== 'object' || Array.isArray(result)) result = null;
+      if (result) {
+        result.healthScore = typeof result.healthScore === 'number' ? Math.min(10, Math.max(1, result.healthScore)) : 5;
+        result.healthLabel = typeof result.healthLabel === 'string' ? result.healthLabel : 'Fair';
+        result.architectureConcerns = Array.isArray(result.architectureConcerns) ? result.architectureConcerns : [];
+        result.maintainabilityRisks = Array.isArray(result.maintainabilityRisks) ? result.maintainabilityRisks : [];
+        result.testingGaps = Array.isArray(result.testingGaps) ? result.testingGaps : [];
+        result.consistencyIssues = Array.isArray(result.consistencyIssues) ? result.consistencyIssues : [];
+        result.topRecommendations = Array.isArray(result.topRecommendations) ? result.topRecommendations.slice(0, 5) : [];
+      }
+    } catch (e) {
+      parseError = rawResponse;
+    }
+
+    res.json({ result, parseError });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// --- Git APIs ---
+
+
+
+
+// Git Status
+app.get("/api/workspaces/:id/git/status", auth, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const files = await prisma.projectFile.findMany({ where: { workspaceId: id } });
+    const status = await runGitCommand(id, files, 'git status --porcelain');
+    res.json({ status });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Git Diff
+app.get("/api/workspaces/:id/git/diff/:fileName", auth, async (req, res, next) => {
+  try {
+    const { id, fileName } = req.params;
+    const files = await prisma.projectFile.findMany({ where: { workspaceId: id } });
+    const diff = await runGitCommand(id, files, `git diff ${fileName}`);
+    res.json({ diff });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Git Add
+app.post("/api/workspaces/:id/git/add", auth, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { files: filesToAdd } = req.body;
+    const files = await prisma.projectFile.findMany({ where: { workspaceId: id } });
+    await runGitCommand(id, files, `git add ${filesToAdd.join(' ')}`);
+    res.json({ message: "Files added" });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Git Commit
+app.post("/api/workspaces/:id/git/commit", auth, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { message } = req.body;
+    const files = await prisma.projectFile.findMany({ where: { workspaceId: id } });
+    await runGitCommand(id, files, `git commit -m "${message}"`);
+    res.json({ message: "Commit successful" });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Git Log
+app.get("/api/workspaces/:id/git/log", auth, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const files = await prisma.projectFile.findMany({ where: { workspaceId: id } });
+    const log = await runGitCommand(id, files, 'git log --pretty=format:"%h - %an, %ar : %s"');
+    res.json({ log });
+  } catch (err) {
     next(err);
   }
 });
@@ -451,6 +859,9 @@ app.get("/docs/:docId/audit", auth, async (req, res, next) => {
  */
 app.get("/api/auth/me", auth, async (req, res, next) => {
   try {
+    if (DEMO_AUTH) {
+      return res.json({ id: req.user.sub, email: req.user.email, createdAt: new Date().toISOString() });
+    }
     const user = await prisma.user.findUnique({
       where: { id: req.user.sub },
       select: { id: true, email: true, createdAt: true },
@@ -486,6 +897,166 @@ app.get("/api/workspaces/:id/presence", auth, (req, res) => {
     const users = activeUsers.has(id) ? Array.from(activeUsers.get(id)) : [];
     res.json({ activeUsers: users });
 });
+
+if (DEMO_AUTH) {
+  app.post("/api/workspaces", auth, async (req, res) => {
+    const { name } = req.body;
+    if (!name) return res.status(400).json({ error: "Name is required" });
+    const id = demoId("ws");
+    const now = new Date().toISOString();
+    const ws = { id, name, ownerId: req.user.sub, createdAt: now, updatedAt: now };
+    demoStore.workspaces.set(id, ws);
+    const key = `${id}:${req.user.sub}`;
+    demoStore.members.set(key, { id: demoId("m"), workspaceId: id, userId: req.user.sub, role: "OWNER", user: { id: req.user.sub, email: req.user.email } });
+    demoStore.activities.set(id, []);
+    return res.json({ ...ws, members: [demoStore.members.get(key)] });
+  });
+  app.get("/api/workspaces", auth, async (req, res) => {
+    const arr = [];
+    for (const [id, ws] of demoStore.workspaces.entries()) {
+      const has = demoStore.members.get(`${id}:${req.user.sub}`);
+      if (has) {
+        const members = [];
+        for (const v of demoStore.members.values()) if (v.workspaceId === id) members.push(v);
+        arr.push({ ...ws, owner: { id: ws.ownerId, email: req.user.email }, members });
+      }
+    }
+    arr.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    return res.json(arr);
+  });
+  app.post("/api/workspaces/:id/invite", auth, async (req, res) => {
+    const { id } = req.params;
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ error: "Email is required" });
+    const ws = demoStore.workspaces.get(id);
+    if (!ws) return res.status(404).json({ error: "Workspace not found" });
+    const requester = demoStore.members.get(`${id}:${req.user.sub}`);
+    if (!requester || requester.role !== 'OWNER') return res.status(403).json({ error: "Only owners can invite members" });
+    const invitedId = `demo_${Buffer.from(email).toString("hex").slice(0, 16)}`;
+    const exists = demoStore.members.get(`${id}:${invitedId}`);
+    if (exists) return res.status(409).json({ error: "User is already a member" });
+    demoStore.members.set(`${id}:${invitedId}`, { id: demoId("m"), workspaceId: id, userId: invitedId, role: "EDITOR", user: { id: invitedId, email } });
+    const host = req.get('host') || 'localhost:8081';
+    const inviteLink = `${req.protocol}://${host}/workspace/${id}`;
+    return res.json({ message: "User added to workspace", link: inviteLink });
+  });
+  app.get("/api/workspaces/:id", auth, async (req, res) => {
+    const { id } = req.params;
+    const ws = demoStore.workspaces.get(id);
+    if (!ws) return res.status(404).json({ error: "Workspace not found" });
+    const isMember = !!demoStore.members.get(`${id}:${req.user.sub}`);
+    if (!isMember) return res.status(403).json({ error: "Access denied" });
+    const members = [];
+    for (const v of demoStore.members.values()) if (v.workspaceId === id) members.push(v);
+    return res.json({ ...ws, owner: { id: ws.ownerId, email: req.user.email }, members });
+  });
+  app.get("/api/workspaces/:id/members", auth, async (req, res) => {
+    const { id } = req.params;
+    const me = demoStore.members.get(`${id}:${req.user.sub}`);
+    if (!me) return res.status(403).json({ error: "Access denied" });
+    const members = [];
+    for (const v of demoStore.members.values()) if (v.workspaceId === id) members.push(v);
+    return res.json(members);
+  });
+  app.patch("/api/workspaces/:id/members/:userId", auth, async (req, res) => {
+    const { id, userId } = req.params;
+    const { role } = req.body;
+    if (!['OWNER', 'ADMIN', 'MEMBER', 'EDITOR', 'VIEWER'].includes(role)) return res.status(400).json({ error: "Invalid role" });
+    const requester = demoStore.members.get(`${id}:${req.user.sub}`);
+    if (!requester || requester.role !== 'OWNER') return res.status(403).json({ error: "Only owners can change roles" });
+    const targetKey = `${id}:${userId}`;
+    const target = demoStore.members.get(targetKey);
+    if (!target) return res.status(404).json({ error: "Member not found" });
+    demoStore.members.set(targetKey, { ...target, role });
+    return res.json(demoStore.members.get(targetKey));
+  });
+  app.delete("/api/workspaces/:id/members/:userId", auth, async (req, res) => {
+    const { id, userId } = req.params;
+    const requester = demoStore.members.get(`${id}:${req.user.sub}`);
+    if (!requester || requester.role !== 'OWNER') return res.status(403).json({ error: "Only owners can remove members" });
+    if (userId === req.user.sub) return res.status(400).json({ error: "Cannot remove yourself. Leave the workspace instead." });
+    const targetKey = `${id}:${userId}`;
+    if (!demoStore.members.has(targetKey)) return res.status(404).json({ error: "Member not found" });
+    demoStore.members.delete(targetKey);
+    return res.json({ message: "Member removed" });
+  });
+  app.delete("/api/workspaces/:id", auth, async (req, res) => {
+    const { id } = req.params;
+    const requester = demoStore.members.get(`${id}:${req.user.sub}`);
+    if (!requester || requester.role !== 'OWNER') return res.status(403).json({ error: "Only owners can delete workspaces" });
+    demoStore.workspaces.delete(id);
+    for (const k of Array.from(demoStore.members.keys())) if (k.startsWith(id + ":")) demoStore.members.delete(k);
+    for (const [fid, f] of Array.from(demoStore.files.entries())) if (f.workspaceId === id) demoStore.files.delete(fid);
+    demoStore.activities.delete(id);
+    return res.json({ message: "Workspace deleted" });
+  });
+  app.get("/api/workspaces/:id/files", auth, async (req, res) => {
+    const { id } = req.params;
+    const me = demoStore.members.get(`${id}:${req.user.sub}`);
+    if (!me) return res.status(403).json({ error: "Access denied" });
+    const files = [];
+    for (const f of demoStore.files.values()) if (f.workspaceId === id) files.push({ id: f.id, name: f.name, language: f.language, updatedAt: f.updatedAt });
+    files.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+    return res.json(files);
+  });
+  app.post("/api/workspaces/:id/files", auth, async (req, res) => {
+    const { id } = req.params;
+    const { name, content, language } = req.body;
+    if (!name) return res.status(400).json({ error: "Filename is required" });
+    const me = demoStore.members.get(`${id}:${req.user.sub}`);
+    if (!me || ['VIEWER'].includes(me.role)) return res.status(403).json({ error: "Write access denied" });
+    const fileId = demoId("file");
+    const f = { id: fileId, workspaceId: id, name, content: content || "", language: language || "plaintext", updatedAt: new Date().toISOString() };
+    demoStore.files.set(fileId, f);
+    const acts = demoStore.activities.get(id) || [];
+    acts.push({ id: demoId("act"), workspaceId: id, userId: req.user.sub, actionType: "FILE_CREATED", metadata: { fileName: name, fileId }, createdAt: new Date().toISOString() });
+    demoStore.activities.set(id, acts);
+    return res.json(f);
+  });
+  app.get("/api/files/:id", auth, async (req, res) => {
+    const { id } = req.params;
+    const f = demoStore.files.get(id);
+    if (!f) return res.status(404).json({ error: "File not found" });
+    const me = demoStore.members.get(`${f.workspaceId}:${req.user.sub}`);
+    if (!me) return res.status(403).json({ error: "Access denied" });
+    return res.json(f);
+  });
+  app.put("/api/files/:id", auth, async (req, res) => {
+    const { id } = req.params;
+    const { content, name, language } = req.body;
+    const f = demoStore.files.get(id);
+    if (!f) return res.status(404).json({ error: "File not found" });
+    const me = demoStore.members.get(`${f.workspaceId}:${req.user.sub}`);
+    if (!me || ['VIEWER'].includes(me.role)) return res.status(403).json({ error: "Write access denied" });
+    const updated = { ...f, content: content !== undefined ? content : f.content, name: name !== undefined ? name : f.name, language: language !== undefined ? language : f.language, updatedAt: new Date().toISOString() };
+    demoStore.files.set(id, updated);
+    const acts = demoStore.activities.get(f.workspaceId) || [];
+    const actionType = name !== undefined && name !== f.name ? "FILE_RENAMED" : language !== undefined && language !== f.language ? "FILE_LANGUAGE_CHANGED" : "FILE_UPDATED";
+    acts.push({ id: demoId("act"), workspaceId: f.workspaceId, userId: req.user.sub, actionType, metadata: { fileName: updated.name, fileId: id }, createdAt: new Date().toISOString() });
+    demoStore.activities.set(f.workspaceId, acts);
+    return res.json(updated);
+  });
+  app.delete("/api/files/:id", auth, async (req, res) => {
+    const { id } = req.params;
+    const f = demoStore.files.get(id);
+    if (!f) return res.status(404).json({ error: "File not found" });
+    const me = demoStore.members.get(`${f.workspaceId}:${req.user.sub}`);
+    if (!me || !['OWNER', 'ADMIN'].includes(me.role)) return res.status(403).json({ error: "Only admins can delete files" });
+    demoStore.files.delete(id);
+    const acts = demoStore.activities.get(f.workspaceId) || [];
+    acts.push({ id: demoId("act"), workspaceId: f.workspaceId, userId: req.user.sub, actionType: "FILE_DELETED", metadata: { fileName: f.name, fileId: id }, createdAt: new Date().toISOString() });
+    demoStore.activities.set(f.workspaceId, acts);
+    return res.json({ message: "File deleted" });
+  });
+  app.get("/api/workspaces/:id/activity", auth, async (req, res) => {
+    const { id } = req.params;
+    const me = demoStore.members.get(`${id}:${req.user.sub}`);
+    if (!me) return res.status(403).json({ error: "Access denied" });
+    const activities = demoStore.activities.get(id) || [];
+    activities.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    return res.json(activities.slice(0, 50));
+  });
+}
 
 // Create Workspace
 app.post("/api/workspaces", auth, async (req, res, next) => {
@@ -991,7 +1562,62 @@ app.delete("/api/files/:id", auth, async (req, res, next) => {
   }
 });
 
+
+// Search in Workspace
+app.post("/api/workspaces/:id/search", auth, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { query } = req.body;
+
+    if (!query) return res.status(400).json({ error: "Query is required" });
+
+    // Check access
+    const member = await prisma.workspaceMember.findUnique({
+      where: { workspaceId_userId: { workspaceId: id, userId: req.user.sub } }
+    });
+    if (!member) return res.status(403).json({ error: "Access denied" });
+
+    const files = await prisma.projectFile.findMany({
+      where: { workspaceId: id },
+      select: { id: true, name: true, content: true }
+    });
+
+    const results = [];
+
+    for (const file of files) {
+      const lines = file.content.split('\n');
+      const matches = [];
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        const column = line.indexOf(query);
+        if (column !== -1) {
+          matches.push({
+            line: i + 1,
+            column: column + 1,
+            preview: line,
+            matchText: query
+          });
+        }
+      }
+
+      if (matches.length > 0) {
+        results.push({
+          fileId: file.id,
+          filePath: file.name,
+          fileName: file.name,
+          matches
+        });
+      }
+    }
+
+    res.json(results);
+  } catch (err) {
+    next(err);
+  }
+});
+
 // --- Versioning APIs ---
+
 
 // Get File Versions
 app.get("/api/files/:id/versions", auth, async (req, res, next) => {
@@ -1207,19 +1833,28 @@ app.post("/api/run", auth, async (req, res, next) => {
     let lang = language;
     let workspaceId = null;
     if (fileId) {
-      const file = await prisma.projectFile.findUnique({
-        where: { id: fileId },
-        select: { id: true, content: true, language: true, workspaceId: true },
-      });
-      if (!file) return res.status(404).json({ error: "File not found" });
-      const member = await prisma.workspaceMember.findUnique({
-        where: { workspaceId_userId: { workspaceId: file.workspaceId, userId: req.user.sub } }
-      });
-      if (!member) return res.status(403).json({ error: "Access denied" });
-      content = file.content;
-      // Prefer explicitly provided language from client; fallback to file record
-      lang = language || file.language;
-      workspaceId = file.workspaceId;
+      if (DEMO_AUTH) {
+        const f = demoStore.files.get(fileId);
+        if (!f) return res.status(404).json({ error: "File not found" });
+        const me = demoStore.members.get(`${f.workspaceId}:${req.user.sub}`);
+        if (!me) return res.status(403).json({ error: "Access denied" });
+        content = f.content;
+        lang = language || f.language;
+        workspaceId = f.workspaceId;
+      } else {
+        const file = await prisma.projectFile.findUnique({
+          where: { id: fileId },
+          select: { id: true, content: true, language: true, workspaceId: true },
+        });
+        if (!file) return res.status(404).json({ error: "File not found" });
+        const member = await prisma.workspaceMember.findUnique({
+          where: { workspaceId_userId: { workspaceId: file.workspaceId, userId: req.user.sub } }
+        });
+        if (!member) return res.status(403).json({ error: "Access denied" });
+        content = file.content;
+        lang = language || file.language;
+        workspaceId = file.workspaceId;
+      }
     }
     if (!content) return res.status(400).json({ error: "No code provided" });
     const normalized = (lang || "").toLowerCase();
@@ -1233,8 +1868,17 @@ app.post("/api/run", auth, async (req, res, next) => {
       args = [tmpFile];
     } else if (normalized === "python" || normalized === "py") {
       tmpFile = path.join(tmpDir, `run_${Date.now()}_${Math.random().toString(36).slice(2)}.py`);
-      command = process.env.PYTHON_PATH || "python";
-      args = [tmpFile];
+      if (process.env.PYTHON_PATH && process.env.PYTHON_PATH.length > 0) {
+        command = process.env.PYTHON_PATH;
+        args = [tmpFile];
+      } else if (process.platform === "win32") {
+        // Prefer Windows Python launcher if available
+        command = "py";
+        args = ["-3", tmpFile];
+      } else {
+        command = "python";
+        args = [tmpFile];
+      }
       const rawStdinForPrelude = typeof req.body.stdin === "string" ? req.body.stdin : null;
       const stdinForPrelude = rawStdinForPrelude !== null ? (rawStdinForPrelude.endsWith("\n") ? rawStdinForPrelude : rawStdinForPrelude + "\n") : null;
       if (stdinForPrelude !== null) {
@@ -1272,6 +1916,22 @@ app.post("/api/run", auth, async (req, res, next) => {
     try { child.stdin.end(); } catch {}
     child.stdout.on("data", d => { stdout += d.toString(); });
     child.stderr.on("data", d => { stderr += d.toString(); });
+    child.on("error", e => {
+      clearTimeout(timer);
+      try { fs.unlinkSync(tmpFile); } catch {}
+      const msg = String(e && e.message ? e.message : e);
+      let friendly = msg;
+      if (e && e.code === "ENOENT") {
+        if (normalized === "python" || normalized === "py") {
+          friendly = "Python runtime not found. Install Python or set PYTHON_PATH to python.exe";
+        } else if (normalized === "go") {
+          friendly = "Go runtime not found. Install Go and ensure 'go' is on PATH";
+        } else {
+          friendly = `Runtime '${command}' not found. Ensure it is installed and on PATH`;
+        }
+      }
+      res.status(500).json({ error: friendly, stdout: "", stderr: msg, exitCode: -1, durationMs: Date.now() - start, workspaceId });
+    });
     child.on("close", code => {
       clearTimeout(timer);
       try { fs.unlinkSync(tmpFile); } catch {}
@@ -1369,8 +2029,126 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: "server error" });
 });
 
-app.listen(PORT, "0.0.0.0", () => {
+const server = app.listen(PORT, "0.0.0.0", () => {
   console.log(`API: http://localhost:${PORT}`);
+});
+
+// LSP WebSocket Server
+const lspWss = new WebSocketServer({ noServer: true });
+
+server.on('upgrade', (request, socket, head) => {
+  const pathname = new URL(request.url, `http://${request.headers.host}`).pathname;
+
+  if (pathname === '/lsp') {
+    lspWss.handleUpgrade(request, socket, head, (ws) => {
+      lspWss.emit('connection', ws, request);
+    });
+  } else if (pathname === '/terminal') {
+    wss.handleUpgrade(request, socket, head, (ws) => {
+      wss.emit('connection', ws, request);
+    });
+  } else {
+    socket.destroy();
+  }
+});
+
+lspWss.on('connection', async (ws, req) => {
+  const url = new URL(req.url, `http://${req.headers.host}`);
+  const workspaceId = url.searchParams.get('workspaceId');
+  const token = url.searchParams.get('token');
+
+  if (!workspaceId || !token) {
+    ws.close(1008, 'Missing workspaceId or token');
+    return;
+  }
+
+  try {
+    jwt.verify(token, JWT_SECRET);
+    const repoDir = path.join(REPOS_DIR, workspaceId);
+    
+    // Ensure repo directory exists before starting LSP
+    if (!fs.existsSync(repoDir)) {
+      fs.mkdirSync(repoDir, { recursive: true });
+    }
+
+    // Sync files from DB to filesystem to ensure LSP has latest code
+    const files = await prisma.projectFile.findMany({ where: { workspaceId } });
+    for (const file of files) {
+      const filePath = path.join(repoDir, file.name);
+      const dirName = path.dirname(filePath);
+      if (!fs.existsSync(dirName)) fs.mkdirSync(dirName, { recursive: true });
+      fs.writeFileSync(filePath, file.content);
+    }
+
+    lspManager.startServer(workspaceId, repoDir, ws);
+
+  } catch (err) {
+    console.error('LSP WS Connection Error:', err);
+    ws.close(1008, 'Invalid token or internal error');
+  }
+});
+
+// Terminal WebSocket Server
+const wss = new WebSocketServer({ noServer: true });
+
+wss.on('connection', async (ws, req) => {
+  const url = new URL(req.url, `http://${req.headers.host}`);
+  const workspaceId = url.searchParams.get('workspaceId');
+  const token = url.searchParams.get('token');
+
+  if (!workspaceId || !token) {
+    ws.close(1008, 'Missing workspaceId or token');
+    return;
+  }
+
+  try {
+    // Verify token
+    const payload = jwt.verify(token, JWT_SECRET);
+    const userId = payload.sub;
+
+    // TODO: Verify user is member of workspace
+    
+    // For now, create a temporary directory for the workspace if it doesn't exist
+    const workspaceDir = path.join(process.cwd(), 'workspaces', workspaceId);
+    if (!fs.existsSync(workspaceDir)) {
+      fs.mkdirSync(workspaceDir, { recursive: true });
+    }
+
+    let session = terminalManager.getSession(workspaceId);
+    if (!session) {
+      session = await terminalManager.createSession(workspaceId, workspaceDir);
+      session.start();
+    }
+
+    const onData = (data) => ws.send(JSON.stringify({ type: 'data', data }));
+    const onExit = (code) => ws.send(JSON.stringify({ type: 'exit', code }));
+
+    session.on('data', onData);
+    session.on('exit', onExit);
+
+    ws.on('message', (message) => {
+      try {
+        const msg = JSON.parse(message);
+        if (msg.type === 'data') {
+          session.write(msg.data);
+        } else if (msg.type === 'resize') {
+          session.resize(msg.cols, msg.rows);
+        }
+      } catch (err) {
+        console.error('Terminal WS Message Error:', err);
+      }
+    });
+
+    ws.on('close', () => {
+      session.removeListener('data', onData);
+      session.removeListener('exit', onExit);
+      // Optional: Kill session after delay or when no clients left
+    });
+
+  } catch (err) {
+    console.error('Terminal WS Connection Error:', err);
+    ws.close(1008, 'Invalid token');
+  }
 });
 
 // Keep process alive hack for sandbox

@@ -171,6 +171,17 @@ export const api = {
       return safeFetch(`${API_URL}/workspaces/${id}/activity`, {
         headers: { Authorization: `Bearer ${token}` },
       });
+    },
+    search: async (workspaceId: string, query: string) => {
+      const token = localStorage.getItem("token");
+      return safeFetch(`${API_URL}/workspaces/${workspaceId}/search`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ query }),
+      });
     }
   },
   files: {
@@ -276,5 +287,47 @@ export const api = {
       if (!response.ok) throw new Error(data.error || "Failed to run via Judge0");
       return data;
     }
+  },
+  git: {
+    status: async (workspaceId: string) => {
+      const token = localStorage.getItem("token");
+      return safeFetch(`${API_URL}/workspaces/${workspaceId}/git/status`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+    },
+    diff: async (workspaceId: string, fileName: string) => {
+      const token = localStorage.getItem("token");
+      return safeFetch(`${API_URL}/workspaces/${workspaceId}/git/diff/${fileName}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+    },
+    add: async (workspaceId: string, files: string[]) => {
+      const token = localStorage.getItem("token");
+      return safeFetch(`${API_URL}/workspaces/${workspaceId}/git/add`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ files }),
+      });
+    },
+    commit: async (workspaceId: string, message: string) => {
+      const token = localStorage.getItem("token");
+      return safeFetch(`${API_URL}/workspaces/${workspaceId}/git/commit`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ message }),
+      });
+    },
+    log: async (workspaceId: string) => {
+      const token = localStorage.getItem("token");
+      return safeFetch(`${API_URL}/workspaces/${workspaceId}/git/log`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+    },
   }
 };
