@@ -2,9 +2,9 @@ import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { AuthLayout } from "@/components/auth/AuthLayout";
 import { AuthCard } from "@/components/auth/AuthCard";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Button } from "@/components/UI/button";
+import { Input } from "@/components/UI/input";
+import { Label } from "@/components/UI/label";
 import { useToast } from "@/hooks/use-toast";
 import { api } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
@@ -36,6 +36,7 @@ export default function RegisterPage() {
         title: "Account created!",
         description: "Welcome to CollabCode.",
       });
+      try { sessionStorage.removeItem("cc.demo"); localStorage.removeItem("demoMode"); } catch {}
       navigate("/dashboard");
     } catch (err: any) {
       localStorage.removeItem("token");

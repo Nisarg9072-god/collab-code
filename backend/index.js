@@ -12,6 +12,21 @@ import pool from "./db.js";
 import { spawn } from "child_process";
 import fs from "fs";
 import path from "path";
+import { spawn } from "child_process";
+import Razorpay from "razorpay";
+
+// duplicate dotenv import removed
+/**
+ * @swagger
+ * tags:
+ *   - name: Auth
+ *     description: Authentication and user identity
+ *     description: Authentication and user identity
+ *   - name: Documents
+ *     description: Document lifecycle and access control
+ *   - name: History
+ *     description: Snapshots and audit logs
+ */
 import { fileURLToPath } from "url";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -29,6 +44,12 @@ process.on("uncaughtException", (err) => {
 
 const PORT = process.env.PORT || 3001;
 const JWT_SECRET = process.env.JWT_SECRET || "supersecret";
+const RAZORPAY_KEY_ID = process.env.RAZORPAY_KEY_ID || "rzp_test_1234567890abcdef";
+const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET || "testsecret1234567890";
+const razorpay = new Razorpay({
+  key_id: RAZORPAY_KEY_ID,
+  key_secret: RAZORPAY_KEY_SECRET,
+});
 
 // ─────────────────────────────────────────────
 // Middleware
@@ -324,6 +345,73 @@ app.get("/api/health/users", async (req, res) => {
   }
 });
 
+// Routes
+
+// Payments (Test Mode): Create Razorpay Order
+app.post("/create-order", async (req, res) => {
+  try {
+    const { plan } = req.body || {};
+    const mapping = {
+      PRO: 1500 * 100,
+      PREMIUM: 2200 * 100,
+      ULTRA: 3000 * 100,
+    };
+    if (!plan || !mapping[plan]) {
+      return res.status(400).json({ error: "Invalid plan" });
+    }
+    const order = await razorpay.orders.create({
+      amount: mapping[plan],
+      currency: "INR",
+      receipt: `order_${plan}_${Date.now()}`,
+      notes: { plan },
+      payment_capture: 1,
+    });
+    res.json({
+      orderId: order.id,
+      amount: order.amount,
+      currency: order.currency,
+      plan,
+      planName: plan,
+      keyId: RAZORPAY_KEY_ID,
+    });
+  } catch (err) {
+    console.error("Failed to create Razorpay order:", err?.message || err);
+    res.status(500).json({ error: "Failed to create order" });
+  }
+});
+
+// Mirror under /api for consistency
+app.post("/api/create-order", async (req, res) => {
+  req.url = "/create-order";
+  app._router.handle(req, res);
+});
+
+// Register
+/**
+ * @swagger
+ * /api/auth/register:
+ *   post:
+ *     tags: [Auth]
+ *     summary: Register a new user
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [email, password]
+ *             properties:
+ *               email:
+ *                 type: string
+ *               password:
+ *                 type: string
+ *               name:
+ *                 type: string
+ *     responses:
+ *       201:
+ *         description: User registered successfully
+ */
+app.post("/api/auth/register", async (req, res, next) => {
 // ─────────────────────────────────────────────
 // Auth Routes
 // ─────────────────────────────────────────────

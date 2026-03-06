@@ -29,8 +29,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const checkAuth = async () => {
+    const demo = typeof window !== "undefined" && ((sessionStorage.getItem("cc.demo") === "true") || (localStorage.getItem("demoMode") === "true"));
     const token = localStorage.getItem("token");
     if (!token) {
+      if (demo) {
+        setUser({ id: "demo-user", email: "demo@demo.com", name: "Demo User" });
+        setLoading(false);
+        return;
+      }
       setLoading(false);
       return;
     }

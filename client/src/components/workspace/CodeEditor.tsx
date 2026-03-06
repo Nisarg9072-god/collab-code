@@ -10,6 +10,7 @@ interface CodeEditorProps {
   onChange: (code: string) => void;
   collaborators: { name: string; status: "online" | "idle" | "offline" }[];
   connectionStatus: ConnectionStatus;
+  readOnly?: boolean;
   onDiagnosticsChange?: (markers: Array<{
     message: string;
     severity: number;
@@ -20,7 +21,7 @@ interface CodeEditorProps {
   }>) => void;
 }
 
-const CodeEditor = ({ code, language, onChange, collaborators, connectionStatus, onDiagnosticsChange }: CodeEditorProps) => {
+const CodeEditor = ({ code, language, onChange, collaborators, connectionStatus, readOnly, onDiagnosticsChange }: CodeEditorProps) => {
   const editorRef = useRef<any>(null);
   const { theme } = useTheme();
 
@@ -50,7 +51,7 @@ const CodeEditor = ({ code, language, onChange, collaborators, connectionStatus,
     }
   };
 
-  const isReadOnly = connectionStatus === "offline";
+  const isReadOnly = !!readOnly || connectionStatus === "offline";
 
   // Map language to Monaco built-in language IDs; fallback to plaintext to avoid false errors
   const getMonacoLanguage = (lang: string) => {
@@ -74,7 +75,7 @@ const CodeEditor = ({ code, language, onChange, collaborators, connectionStatus,
           Reconnecting...
         </div>
       )}
-      {connectionStatus === "offline" && (
+      {connectionStatus === "offline" && !readOnly && (
         <div className="absolute top-0 left-0 right-0 z-10 flex items-center justify-center gap-2 bg-red-500/10 py-1.5 text-xs text-red-500 border-b border-red-500/20 backdrop-blur-sm">
           <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
           Offline — read-only mode
