@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Plus, ArrowRight, Wifi } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/UI/button";
 import { Input } from "@/components/UI/input";
 import Logo from "@/components/Logo";
 import { useToast } from "@/hooks/use-toast";

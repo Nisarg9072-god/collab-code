@@ -1,3 +1,4 @@
+import React, { useEffect } from "react";
 import { Toaster } from "@/components/UI/toaster";
 import { Toaster as Sonner } from "@/components/UI/sonner";
 import { TooltipProvider } from "@/components/UI/tooltip";
@@ -16,6 +17,23 @@ import ProfilePage from "./pages/ProfilePage";
 import NotFound from "./pages/NotFound";
 import { useAuth } from "./context/AuthContext";
 import { Navigate } from "react-router-dom";
+import DemoReturnDialog from "@/components/demo/DemoReturnDialog";
+import PricingPage from "./pages/PricingPage";
+
+function RedirectAfterLogin() {
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  useEffect(() => {
+    if (user) {
+      const target = sessionStorage.getItem("cc.redirectAfterLogin");
+      if (target) {
+        sessionStorage.removeItem("cc.redirectAfterLogin");
+        navigate(target);
+      }
+    }
+  }, [user, navigate]);
+  return null;
+}
 
 // Protected Route Component
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
@@ -48,7 +66,7 @@ function DemoNotice() {
   if (!demo) return null;
   return (
     <div className="w-full text-xs text-amber-800 bg-amber-100 border-b border-amber-200 px-3 py-1 flex items-center justify-center gap-3">
-      <span>Demo Mode – You are exploring the platform without logging in.</span>
+      <span>Demo Mode — Your data will not be saved permanently.</span>
       <button
         className="underline text-amber-900 hover:text-amber-700"
         onClick={() => {
@@ -72,8 +90,11 @@ const App = () => (
         <ThemeProvider attribute="class" defaultTheme="light" enableSystem storageKey="theme">
           <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
             <DemoNotice />
+            <DemoReturnDialog />
+            <RedirectAfterLogin />
             <Routes>
               <Route path="/" element={<Index />} />
+              <Route path="/pricing" element={<PricingPage />} />
               <Route path="/login" element={<LoginPage />} />
               <Route path="/register" element={<RegisterPage />} />
               <Route path="/dashboard" element={

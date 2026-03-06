@@ -1,14 +1,16 @@
 import { Copy, Link, ShieldAlert } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Button } from "@/components/UI/button";
+import { Input } from "@/components/UI/input";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
+} from "@/components/UI/dialog";
 import { useToast } from "@/hooks/use-toast";
+import { useState } from "react";
+import { api } from "@/lib/api";
 
 interface ShareModalProps {
   open: boolean;
@@ -19,6 +21,7 @@ interface ShareModalProps {
 const ShareModal = ({ open, onOpenChange, workspaceId }: ShareModalProps) => {
   const { toast } = useToast();
   const inviteLink = `${window.location.origin}/workspace/${workspaceId}`;
+  const [invitee, setInvitee] = useState("");
 
   const copyText = (text: string, label: string) => {
     navigator.clipboard.writeText(text);
@@ -52,6 +55,46 @@ const ShareModal = ({ open, onOpenChange, workspaceId }: ShareModalProps) => {
               <Input value={inviteLink} readOnly className="text-xs bg-muted" />
               <Button variant="secondary" size="icon" onClick={() => copyText(inviteLink, "Invite link")}>
                 <Link className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-foreground">Invite by Email or Username</label>
+            <div className="flex gap-2">
+              <Input 
+                placeholder="name@example.com or username" 
+                value={invitee} 
+                onChange={(e) => setInvitee(e.target.value)} />
+              <Button 
+                onClick={async () => {
+                  if (!invitee.trim()) return;
+                  const plan = (localStorage.getItem("cc.plan") || "FREE").toUpperCase();
+                  const limits: Record<string, number> = { FREE: 6, PRO: 6, PREMIUM: 8, ULTRA: 10 };
+                  const memberLimit = limits[plan] ?? 6;
+                  let currentMembers = 0;
+                  try {
+                    const ws = await api.workspaces.get(workspaceId);
+                    currentMembers = Array.isArray(ws?.members) ? ws.members.length : 0;
+                  } catch {}
+                  if (currentMembers >= memberLimit) {
+                    toast({
+                      variant: "destructive",
+                      title: "Member limit reached",
+                      description: "Member limit reached for your plan. Upgrade to add more collaborators.",
+                    });
+                    return;
+                  }
+                  try {
+                    const res = await api.workspaces.invite(workspaceId, invitee.trim());
+                    toast({ title: "Invite sent", description: res?.message || "Collaborator invited" });
+                    setInvitee("");
+                  } catch (e: any) {
+                    toast({ variant: "destructive", title: "Invite failed", description: e?.message || "Could not send invite" });
+                  }
+                }}
+              >
+                Invite
               </Button>
             </div>
           </div>

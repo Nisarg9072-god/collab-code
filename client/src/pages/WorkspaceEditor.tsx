@@ -7,10 +7,11 @@ import CodeEditor from "@/components/workspace/CodeEditor";
 import StatusBar from "@/components/workspace/StatusBar";
 import ShareModal from "@/components/workspace/ShareModal";
 import VersionHistory from "@/components/workspace/VersionHistory";
+import UsageLimitDialog from "@/components/workspace/UsageLimitDialog";
 import { api } from "@/lib/api";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/UI/dialog";
 import { Input } from "@/components/UI/input";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/UI/button";
 import { toast } from "@/hooks/use-toast";
 import { FileText, Users, Activity } from "lucide-react";
 
@@ -85,6 +86,8 @@ const WorkspaceEditor = () => {
   const [aiPrompt, setAiPrompt] = useState("");
   const location = useLocation();
   const demoActive = new URLSearchParams(location.search).get("demo") === "true" || sessionStorage.getItem("cc.demo") === "true";
+  const [usageSecondsToday, setUsageSecondsToday] = useState<number>(0);
+  const [editingLocked, setEditingLocked] = useState<boolean>(false);
 
 
   const MOCK_PARTICIPANTS = [
@@ -129,6 +132,82 @@ const WorkspaceEditor = () => {
         }).finally(() => setLoading(false));
     }
   }, [id]);
+
+  // Usage tracking
+  useEffect(() => {
+    const getUserId = () => {
+      try {
+        const token = localStorage.getItem("token");
+        if (!token && demoActive) return "demo-user";
+        // Best-effort: pull from last known profile cache if available in localStorage
+        const cached = localStorage.getItem("cc.user.id");
+        return cached || (demoActive ? "demo-user" : "anon");
+      } catch {
+        return demoActive ? "demo-user" : "anon";
+      }
+    };
+    const getPlan = (): "DEMO" | "FREE" | "PRO" | "PREMIUM" | "ULTRA" => {
+      const stored = (localStorage.getItem("cc.plan") || "").toUpperCase();
+      if (stored === "PRO" || stored === "PREMIUM" || stored === "ULTRA" || stored === "FREE") return stored as any;
+      return demoActive ? "DEMO" : "FREE";
+    };
+    const limits: Record<string, number | "unlimited"> = {
+      DEMO: 2 * 60 * 60,
+      FREE: 2 * 60 * 60,
+      PRO: 6 * 60 * 60,
+      PREMIUM: 8 * 60 * 60,
+      ULTRA: "unlimited",
+    };
+    const uid = getUserId();
+    const plan = getPlan();
+    const today = new Date();
+    const dayKey = today.toISOString().slice(0, 10); // YYYY-MM-DD
+    const storeKey = `cc.usage.${uid}.${dayKey}`;
+    const lockKey = `cc.usage.locked.${uid}.${dayKey}`;
+    const startKey = `cc.usage.startAt.${uid}.${dayKey}`;
+
+    // Load current
+    const initial = parseInt(localStorage.getItem(storeKey) || "0", 10);
+    setUsageSecondsToday(Number.isFinite(initial) ? initial : 0);
+    const maxSeconds = limits[plan];
+    if (maxSeconds !== "unlimited" && initial >= (maxSeconds as number)) {
+      setEditingLocked(true);
+      localStorage.setItem(lockKey, "true");
+      return;
+    }
+    localStorage.setItem(startKey, String(Date.now()));
+
+    let tickHandle: number | null = null;
+    const tick = () => {
+      // Count only when tab visible
+      if (document.visibilityState !== "visible") return;
+      // Update every second
+      const prev = parseInt(localStorage.getItem(storeKey) || "0", 10);
+      const next = (Number.isFinite(prev) ? prev : 0) + 1;
+      localStorage.setItem(storeKey, String(next));
+      setUsageSecondsToday(next);
+      if (maxSeconds !== "unlimited" && next >= (maxSeconds as number)) {
+        setEditingLocked(true);
+        localStorage.setItem(lockKey, "true");
+      }
+    };
+    tickHandle = window.setInterval(tick, 1000);
+    const visHandler = () => {
+      // touch start time if tab returns visible
+      if (document.visibilityState === "visible") {
+        localStorage.setItem(startKey, String(Date.now()));
+      }
+    };
+    document.addEventListener("visibilitychange", visHandler);
+
+    return () => {
+      if (tickHandle) {
+        clearInterval(tickHandle);
+      }
+      document.removeEventListener("visibilitychange", visHandler);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [demoActive]);
 
   useEffect(() => {
     const v = localStorage.getItem("cc.terminalHeight");
@@ -421,6 +500,7 @@ const WorkspaceEditor = () => {
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-background">
+      <UsageLimitDialog />
       <TopBar
         workspaceId={id || "unknown"}
         activeFile={activeFileObj?.name || "No file selected"}
@@ -667,6 +747,7 @@ const WorkspaceEditor = () => {
               onChange={setCode}
               collaborators={MOCK_PARTICIPANTS.filter(p => p.name !== "You")}
               connectionStatus={connectionStatus}
+              readOnly={editingLocked}
               onDiagnosticsChange={setProblems}
             />
         )}

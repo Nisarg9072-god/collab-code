@@ -2,13 +2,13 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/UI/button";
+import { Input } from "@/components/UI/input";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/UI/dialog";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/UI/card";
 import { Plus, Users, ArrowRight, Loader2, LayoutGrid, LogOut, Clock, DoorOpen, Search, Bell, Command, Star, Sun, Moon } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/UI/avatar";
 import { useTheme } from "next-themes";
 
 interface Workspace {
@@ -31,6 +31,7 @@ export default function Dashboard() {
   const [createOpen, setCreateOpen] = useState(false);
   const [newWorkspaceName, setNewWorkspaceName] = useState("");
   const [creating, setCreating] = useState(false);
+  const [upgradeOpen, setUpgradeOpen] = useState(false);
 
   // Join Modal State
   const [joinOpen, setJoinOpen] = useState(false);
@@ -64,6 +65,12 @@ export default function Dashboard() {
     e.preventDefault();
     if (!newWorkspaceName.trim()) return;
 
+    const plan = (localStorage.getItem("cc.plan") || "FREE").toUpperCase();
+    const canCreate = plan === "PRO" || plan === "PREMIUM" || plan === "ULTRA";
+    if (!canCreate) {
+      setUpgradeOpen(true);
+      return;
+    }
     setCreating(true);
     try {
       const workspace = await api.workspaces.create(newWorkspaceName);
@@ -147,6 +154,19 @@ export default function Dashboard() {
   }
 
   return (
+    <>
+      <Dialog open={upgradeOpen} onOpenChange={setUpgradeOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Upgrade required</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">Upgrade your plan to create a workspace.</p>
+          <div className="pt-2">
+            <Button onClick={() => navigate("/pricing")}>Upgrade</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    
     <div className="min-h-screen bg-background text-foreground flex flex-col">
       {/* Top Navigation - Control Center Style */}
       <header className="sticky top-0 z-50 w-full border-b border-white/10 bg-background/80 backdrop-blur-md supports-[backdrop-filter]:bg-background/60">
@@ -435,5 +455,6 @@ export default function Dashboard() {
         </div>
       </main>
     </div>
+    </>
   );
 }
