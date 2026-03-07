@@ -1,4 +1,4 @@
-import WorkspaceIDE from "@/components/workspace/ide/WorkspaceIDE";
+// WorkspaceIDE reserved for future use
 import { useState, useEffect, useRef } from "react";
 import { useParams, useLocation } from "react-router-dom";
 import { formatDistanceToNow } from "date-fns";
@@ -10,6 +10,9 @@ import ShareModal from "@/components/workspace/ShareModal";
 import VersionHistory from "@/components/workspace/VersionHistory";
 import UsageLimitDialog from "@/components/workspace/UsageLimitDialog";
 import { api } from "@/lib/api";
+import { useAuth } from "@/context/AuthContext";
+import * as Y from "yjs";
+import { WebsocketProvider } from "y-websocket";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/UI/dialog";
 import { Input } from "@/components/UI/input";
 import { Button } from "@/components/UI/button";
@@ -87,7 +90,12 @@ const WorkspaceEditor = () => {
   const [aiPrompt, setAiPrompt] = useState("");
   const [usageSecondsToday, setUsageSecondsToday] = useState<number>(0);
   const [editingLocked, setEditingLocked] = useState<boolean>(false);
+  const [collabToken, setCollabToken] = useState<string | undefined>(undefined);
+  const [ydoc] = useState(() => new Y.Doc());
+  const [provider, setProvider] = useState<WebsocketProvider | null>(null);
 
+  // Must be at top level before effects that use it
+  const { user } = useAuth();
 
   const MOCK_PARTICIPANTS = [
     { name: "You", status: "online" as const },
@@ -101,110 +109,115 @@ const WorkspaceEditor = () => {
         api.files.list(id),
         api.workspaces.activity(id)
       ]).then(([fetchedFiles, fetchedActivity]) => {
-        setFiles(fetchedFiles);
-        if (fetchedFiles.length > 0) {
-          setActiveFileId(fetchedFiles[0].id);
+        const safeFiles: File[] = Array.isArray(fetchedFiles) ? fetchedFiles : [];
+        setFiles(safeFiles);
+        if (safeFiles.length > 0) {
+          setActiveFileId(safeFiles[0].id);
         }
 
-        // Process activity
-        const processedActivity = fetchedActivity.map((a: any) => {
-          let actionText = a.actionType.replace(/_/g, ' ').toLowerCase();
-          // Simple formatting
+        // Process activity — backend may return null if route missing
+        const safeActivity: any[] = Array.isArray(fetchedActivity) ? fetchedActivity : [];
+        const processedActivity = safeActivity.map((a: any) => {
+          let actionText = (a.actionType || 'updated').replace(/_/g, ' ').toLowerCase();
           if (a.actionType === 'FILE_UPDATED') actionText = 'updated file';
           if (a.actionType === 'FILE_CREATED') actionText = 'created file';
           if (a.actionType === 'FILE_DELETED') actionText = 'deleted file';
           if (a.actionType === 'FILE_RESTORED') actionText = 'restored file';
 
-          const fileName = a.metadata?.fileName || 'a file';
-          const userEmail = a.user?.email || 'Unknown user';
+          const fileName = a.metadata?.fileName || a.fileName || 'a file';
+          const userEmail = a.user?.email || a.userEmail || 'Unknown user';
 
           return {
             message: `${userEmail} ${actionText} ${fileName}`,
-            time: formatDistanceToNow(new Date(a.createdAt), { addSuffix: true })
+            time: a.createdAt ? formatDistanceToNow(new Date(a.createdAt), { addSuffix: true }) : 'recently'
           };
         });
         setActivity(processedActivity);
 
       }).catch(err => {
         console.error(err);
-        toast({ variant: "destructive", title: "Error", description: "Failed to load workspace data" });
+        // Don't toast on activity errors — workspace still usable
       }).finally(() => setLoading(false));
     }
   }, [id]);
 
+  // Fetch collab token & Setup Yjs when file changes
+  useEffect(() => {
+    if (!id || !activeFileId) return;
+    let destroyed = false;
+    api.workspaces.collabToken(id).then(res => {
+      if (destroyed) return;
+      const token = res?.token;
+      if (!token) return;
+      setCollabToken(token);
+      setProvider(prev => {
+        if (prev) prev.destroy();
+        const serverUrl = window.location.hostname === 'localhost'
+          ? 'ws://localhost:1234'
+          : `wss://${window.location.hostname}:1234`;
+        const p = new WebsocketProvider(serverUrl, activeFileId, ydoc, {
+          params: { token }
+        });
+        p.awareness.setLocalStateField("user", {
+          name: user?.displayName || user?.email || "User",
+          color: "#" + Math.floor(Math.random() * 16777215).toString(16),
+        });
+        return p;
+      });
+    }).catch(() => { /* collab optional — editor still works without */ });
+    return () => { destroyed = true; };
+  }, [id, activeFileId]);
+
   // Usage tracking
   useEffect(() => {
-    const getUserId = () => {
-      try {
-        const token = localStorage.getItem("token");
-        if (!token) return "anon";
-        const cached = localStorage.getItem("cc.user.id");
-        return cached || "anon";
-      } catch {
-        return "anon";
-      }
-    };
-    const getPlan = (): "FREE" | "PRO" | "PREMIUM" | "ULTRA" => {
-      const stored = (localStorage.getItem("cc.plan") || "").toUpperCase();
-      if (stored === "PRO" || stored === "PREMIUM" || stored === "ULTRA" || stored === "FREE") return stored as any;
-      return "FREE";
-    };
-    const limits: Record<string, number | "unlimited"> = {
-      FREE: 2 * 60 * 60,
-      PRO: 6 * 60 * 60,
-      PREMIUM: 8 * 60 * 60,
-      ULTRA: "unlimited",
-    };
-    const uid = getUserId();
-    const plan = getPlan();
-    const today = new Date();
-    const dayKey = today.toISOString().slice(0, 10); // YYYY-MM-DD
-    const storeKey = `cc.usage.${uid}.${dayKey}`;
+    if (!id || !user?.id) return;
+    const uid = user.id;
+    const dayKey = new Date().toISOString().slice(0, 10);
     const lockKey = `cc.usage.locked.${uid}.${dayKey}`;
-    const startKey = `cc.usage.startAt.${uid}.${dayKey}`;
 
-    // Load current
-    const initial = parseInt(localStorage.getItem(storeKey) || "0", 10);
-    setUsageSecondsToday(Number.isFinite(initial) ? initial : 0);
-    const maxSeconds = limits[plan];
-    if (maxSeconds !== "unlimited" && initial >= (maxSeconds as number)) {
-      setEditingLocked(true);
-      localStorage.setItem(lockKey, "true");
-      return;
-    }
-    localStorage.setItem(startKey, String(Date.now()));
+    let lastPulseAt = Date.now();
 
-    let tickHandle: number | null = null;
-    const tick = () => {
-      // Count only when tab visible
+    const fetchStatus = async () => {
+      try {
+        const res = await api.usage.status();
+        if (res.success && res.data) {
+          setUsageSecondsToday(res.data.totalSeconds);
+          if (res.data.exceeded) {
+            setEditingLocked(true);
+            localStorage.setItem(lockKey, "true");
+          } else {
+            setEditingLocked(false);
+            localStorage.removeItem(lockKey);
+          }
+        }
+      } catch (err) {
+        console.warn("usage check failed", err);
+      }
+    };
+
+    fetchStatus();
+
+    const tick = setInterval(async () => {
       if (document.visibilityState !== "visible") return;
-      // Update every second
-      const prev = parseInt(localStorage.getItem(storeKey) || "0", 10);
-      const next = (Number.isFinite(prev) ? prev : 0) + 1;
-      localStorage.setItem(storeKey, String(next));
-      setUsageSecondsToday(next);
-      if (maxSeconds !== "unlimited" && next >= (maxSeconds as number)) {
-        setEditingLocked(true);
-        localStorage.setItem(lockKey, "true");
-      }
-    };
-    tickHandle = window.setInterval(tick, 1000);
-    const visHandler = () => {
-      // touch start time if tab returns visible
-      if (document.visibilityState === "visible") {
-        localStorage.setItem(startKey, String(Date.now()));
-      }
-    };
-    document.addEventListener("visibilitychange", visHandler);
 
-    return () => {
-      if (tickHandle) {
-        clearInterval(tickHandle);
+      // Update UI immediately (approximate)
+      setUsageSecondsToday(prev => prev + 1);
+
+      const now = Date.now();
+      if (now - lastPulseAt >= 30000) { // Report every 30s
+        const seconds = Math.floor((now - lastPulseAt) / 1000);
+        lastPulseAt = now;
+        try {
+          await api.usage.report(id, seconds);
+          await fetchStatus();
+        } catch (err) {
+          console.warn("pulse failed", err);
+        }
       }
-      document.removeEventListener("visibilitychange", visHandler);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    }, 1000);
+
+    return () => clearInterval(tick);
+  }, [id]);
 
   useEffect(() => {
     const v = localStorage.getItem("cc.terminalHeight");
@@ -569,6 +582,7 @@ const WorkspaceEditor = () => {
             activeFileId={activeFileId}
             onFileSelect={setActiveFileId}
             onFileCreate={() => setCreateOpen(true)}
+            awareness={provider?.awareness}
             onFolderCreate={async (folderName: string) => {
               if (!id) return;
               const clean = folderName.trim().replace(/\/+/g, "/").replace(/^\//, "").replace(/\/$/, "");
@@ -745,6 +759,8 @@ const WorkspaceEditor = () => {
             collaborators={MOCK_PARTICIPANTS.filter(p => p.name !== "You")}
             connectionStatus={connectionStatus}
             readOnly={editingLocked}
+            ydoc={ydoc}
+            provider={provider}
             onDiagnosticsChange={setProblems}
           />
         )}
@@ -808,6 +824,12 @@ const WorkspaceEditor = () => {
       />
 
       {/* Create File Modal */}
+      <ShareModal
+        open={shareOpen}
+        onOpenChange={setShareOpen}
+        workspaceId={id || ""}
+        currentUserId={user?.id}
+      />
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="bg-background border-border">
           <DialogHeader>

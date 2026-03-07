@@ -72,7 +72,6 @@ const safeFetch = async (url: string, options?: RequestInit) => {
 export const api = {
   auth: {
     login: async (credentials: any) => {
-      if (isDemo()) return { token: "demo-token" };
       return safeFetch(`${API_URL}/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -80,15 +79,13 @@ export const api = {
       });
     },
     register: async (credentials: any) => {
-      return safeFetch(`${API_URL}/auth/register`, {
+      return safeFetch(`${API_URL}/auth/signup`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(credentials),
       });
     },
     me: async () => {
-      const token = getToken();
-      if (!token && isDemo()) return { id: "demo-user", email: "demo@local" };
       return safeFetch(`${API_URL}/auth/me`, { headers: authHeader() });
     }
   },
@@ -195,7 +192,8 @@ export const api = {
         headers: jsonHeaders(),
         body: JSON.stringify({ query }),
       });
-    }
+    },
+    collabToken: (workspaceId: string) => safeFetch(`${API_URL}/workspaces/${workspaceId}/collab-token`, { headers: authHeader() }),
   },
 
   files: {
@@ -354,5 +352,13 @@ export const api = {
 
   health: {
     db: () => safeFetch(`${API_URL}/health/db`),
+  },
+  usage: {
+    status: () => safeFetch(`${API_URL}/usage/status`, { headers: authHeader() }),
+    report: (workspaceId: string, seconds: number) => safeFetch(`${API_URL}/usage/report`, {
+      method: "POST",
+      headers: jsonHeaders(),
+      body: JSON.stringify({ workspaceId, seconds }),
+    }),
   }
 };

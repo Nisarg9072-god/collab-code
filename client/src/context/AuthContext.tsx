@@ -6,6 +6,8 @@ interface User {
   email: string;
   displayName?: string;
   createdAt?: string;
+  plan?: string;
+  planExpiry?: string;
   /** @deprecated use displayName */
   name?: string;
 }

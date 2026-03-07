@@ -31,6 +31,9 @@ import Logo from "@/components/Logo";
 import { useToast } from "@/hooks/use-toast";
 import { formatDistanceToNow } from "date-fns";
 
+import { useAuth } from "@/context/AuthContext";
+import { Badge } from "@/components/UI/badge";
+
 const LANGUAGES = ["TypeScript", "JavaScript", "Python", "Go", "Rust", "HTML", "CSS", "JSON", "Markdown", "SQL"];
 
 interface TopBarProps {
@@ -65,6 +68,7 @@ const TopBar = ({
   const navigate = useNavigate();
   const { toast } = useToast();
   const { theme, setTheme } = useTheme();
+  const { user } = useAuth();
 
   const copyWorkspaceId = () => {
     navigator.clipboard.writeText(workspaceId);
@@ -93,32 +97,38 @@ const TopBar = ({
           {workspaceId}
           <Copy className="h-3 w-3" />
         </button>
+
+        {user?.plan === 'PRO' && (
+          <Badge className="h-5 px-1.5 bg-amber-500/10 text-amber-500 border-amber-500/20 text-[10px] uppercase font-bold tracking-wider">
+            PRO
+          </Badge>
+        )}
       </div>
 
       {/* Center - Save Status */}
-      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-        <span className="font-medium text-foreground">{activeFile}</span>
+      <div className="flex items-center gap-2 text-xs text-muted-foreground max-w-[30%] truncate">
+        <span className="font-medium text-foreground truncate">{activeFile || "Select a file"}</span>
         {activeFile && (
-            <div className="flex items-center gap-1.5 pl-2 border-l border-border/50">
-                {saveStatus === "saving" && (
-                    <>
-                        <Cloud className="h-3 w-3 animate-pulse text-yellow-500" />
-                        <span>Saving...</span>
-                    </>
-                )}
-                {saveStatus === "saved" && (
-                    <>
-                        <Check className="h-3 w-3 text-green-500" />
-                        <span>Saved {lastSavedAt ? formatDistanceToNow(lastSavedAt, { addSuffix: true }) : ""}</span>
-                    </>
-                )}
-                {saveStatus === "error" && (
-                    <>
-                        <AlertCircle className="h-3 w-3 text-red-500" />
-                        <span className="text-red-500">Save failed</span>
-                    </>
-                )}
-            </div>
+          <div className="flex items-center gap-1.5 pl-2 border-l border-border/50 shrink-0">
+            {saveStatus === "saving" && (
+              <>
+                <Cloud className="h-3 w-3 animate-pulse text-yellow-500" />
+                <span>Saving...</span>
+              </>
+            )}
+            {saveStatus === "saved" && (
+              <>
+                <Check className="h-3 w-3 text-green-500" />
+                <span>Saved {lastSavedAt ? formatDistanceToNow(lastSavedAt, { addSuffix: true }) : ""}</span>
+              </>
+            )}
+            {saveStatus === "error" && (
+              <>
+                <AlertCircle className="h-3 w-3 text-red-500" />
+                <span className="text-red-500 text-[10px]">Save failed</span>
+              </>
+            )}
+          </div>
         )}
       </div>
 
@@ -127,23 +137,23 @@ const TopBar = ({
         <Button
           variant="ghost"
           size="icon"
-          className="h-7 w-7"
+          className="h-7 w-7 text-muted-foreground hover:text-foreground"
           title={theme === "dark" ? "Switch to light" : "Switch to dark"}
           onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
         >
           {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
         </Button>
-        <Button variant="ghost" size="sm" className="h-7 gap-1.5 text-xs text-muted-foreground hover:text-foreground" onClick={onShowHistory}>
-            <Clock className="h-3.5 w-3.5" />
-            History
+        <Button variant="ghost" size="sm" className="h-7 gap-1.5 text-xs text-muted-foreground hover:text-foreground" onClick={onShowHistory} title="Version History">
+          <Clock className="h-3.5 w-3.5" />
+          <span className="hidden sm:inline">History</span>
         </Button>
-        <Button variant="ghost" size="sm" className="h-7 gap-1.5 text-xs text-muted-foreground hover:text-foreground" onClick={onRun}>
-            Run
+        <Button variant="ghost" size="sm" className="h-7 gap-1.5 text-xs text-muted-foreground hover:text-foreground" onClick={onRun} title="Run Code">
+          <span className="hidden sm:inline">Run</span>
         </Button>
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs text-muted-foreground">
+            <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs text-muted-foreground font-mono">
               {language}
               <ChevronDown className="h-3 w-3" />
             </Button>
@@ -157,17 +167,8 @@ const TopBar = ({
           </DropdownMenuContent>
         </DropdownMenu>
 
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button variant="ghost" size="icon" className="h-7 w-7">
-              <Settings className="h-4 w-4 text-muted-foreground" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>Editor settings</TooltipContent>
-        </Tooltip>
-
-        <Button variant="ghost" size="sm" className="h-7 gap-1.5 text-xs" onClick={onShare}>
-          <Share2 className="h-3.5 w-3.5" />
+        <Button variant="ghost" size="sm" className="h-7 gap-1.5 text-xs hover:bg-primary/10 hover:text-primary transition-colors" onClick={onShare}>
+          <Share2 className="h-3.5 w-3.5 text-primary" />
           Share
         </Button>
 
@@ -176,7 +177,7 @@ const TopBar = ({
             <Button
               variant="ghost"
               size="icon"
-              className="h-7 w-7 text-muted-foreground hover:text-destructive"
+              className="h-7 w-7 text-muted-foreground hover:text-destructive transition-colors ml-1"
               onClick={() => navigate("/")}
             >
               <LogOut className="h-4 w-4" />

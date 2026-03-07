@@ -107,12 +107,8 @@ export default function Dashboard() {
     e.preventDefault();
     if (!newWorkspaceName.trim()) return;
 
-    const plan = (localStorage.getItem("cc.plan") || "FREE").toUpperCase();
-    const canCreate = plan === "PRO" || plan === "PREMIUM" || plan === "ULTRA";
-    if (!canCreate) {
-      setUpgradeOpen(true);
-      return;
-    }
+    // Allow creation regardless of initial plan check.
+    // Usage limits will be enforced inside the workspace itself.
     setCreating(true);
     try {
       const workspace = await api.workspaces.create(newWorkspaceName);
@@ -254,10 +250,15 @@ export default function Dashboard() {
 
               <div className="flex items-center gap-3">
                 <div className="hidden md:block text-right">
-                  <p className="text-sm font-medium">{user?.displayName || user?.name || "User"}</p>
+                  <div className="flex items-center justify-end gap-2">
+                    <p className="text-sm font-medium">{user?.displayName || user?.name || "User"}</p>
+                    <Badge variant={user?.plan === 'PRO' ? 'default' : 'secondary'} className={user?.plan === 'PRO' ? 'bg-amber-500/20 text-amber-500 border-amber-500/30' : 'bg-muted/50 text-muted-foreground'}>
+                      {user?.plan || 'FREE'}
+                    </Badge>
+                  </div>
                   <p className="text-xs text-muted-foreground">{user?.email}</p>
                 </div>
-                <Avatar className="h-9 w-9 border border-white/10">
+                <Avatar className="h-9 w-9 border border-white/10 cursor-pointer" onClick={() => navigate("/pricing")}>
                   <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${user?.email}`} />
                   <AvatarFallback className="bg-primary/20 text-primary text-xs">
                     {user?.email?.substring(0, 2).toUpperCase()}
@@ -497,6 +498,48 @@ export default function Dashboard() {
 
             {/* ── Sidebar ─────────────────────────────────────────────────────── */}
             <div className="lg:col-span-4 space-y-6">
+              {/* Active Plan Card */}
+              <Card className="bg-card/50 backdrop-blur-sm border-white/5 overflow-hidden">
+                <div className={`h-1 w-full bg-gradient-to-r ${user?.plan === 'PRO' ? 'from-amber-500 to-orange-500' : 'from-primary to-blue-500'}`} />
+                <CardHeader className="pb-3 flex flex-row items-center justify-between space-y-0">
+                  <CardTitle className="text-sm font-medium uppercase tracking-wider text-muted-foreground">Active Plan</CardTitle>
+                  <Star className={`h-4 w-4 ${user?.plan === 'PRO' ? 'text-amber-500 fill-amber-500' : 'text-primary'}`} />
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-2xl font-bold tracking-tight">{user?.plan || 'FREE'}</span>
+                    <span className="text-xs text-muted-foreground">Project Plan</span>
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-xs">
+                      <span className="text-muted-foreground">Daily Usage</span>
+                      <span className="font-medium text-foreground">{user?.plan === 'PRO' ? 'No Limit' : '2 Hours'}</span>
+                    </div>
+                    {user?.plan !== 'PRO' && (
+                      <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden">
+                        <div className="h-full bg-primary" style={{ width: '0%' }} />
+                      </div>
+                    )}
+                    <div className="flex justify-between text-xs">
+                      <span className="text-muted-foreground">Plan Expiry</span>
+                      <span className="font-medium text-foreground">
+                        {user?.planExpiry ? new Date(user?.planExpiry).toLocaleDateString() : '—'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {user?.plan !== 'PRO' ? (
+                    <Button size="sm" className="w-full bg-primary/10 text-primary hover:bg-primary/20 border-primary/20" onClick={() => navigate("/pricing")}>
+                      Upgrade to PRO
+                    </Button>
+                  ) : (
+                    <Button size="sm" variant="outline" className="w-full border-amber-500/20 text-amber-500 hover:bg-amber-500/10" onClick={() => navigate("/pricing")}>
+                      Manage Subscription
+                    </Button>
+                  )}
+                </CardContent>
+              </Card>
 
               {/* Invitations panel (if any) */}
               {invitations.length === 0 ? (

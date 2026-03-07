@@ -94,7 +94,8 @@ async function ensureSchema() {
       created_at  timestamptz NOT NULL DEFAULT now(),
       updated_at  timestamptz NOT NULL DEFAULT now(),
       last_login  timestamptz,
-      plan        text        NOT NULL DEFAULT 'FREE'
+      plan        text        NOT NULL DEFAULT 'FREE',
+      plan_expiry timestamptz
     )
   `);
 
@@ -198,6 +199,38 @@ async function ensureSchema() {
     )
   `);
 
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS workspace_usage (
+      id          uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id     uuid        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      room_id     uuid        NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
+      started_at  timestamptz NOT NULL DEFAULT now(),
+      ended_at    timestamptz,
+      duration    integer     DEFAULT 0,
+      day         date        NOT NULL DEFAULT current_date
+    )
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS project_file_yjs_states (
+      file_id     uuid        PRIMARY KEY REFERENCES project_files(id) ON DELETE CASCADE,
+      state       bytea       NOT NULL,
+      updated_at  timestamptz NOT NULL DEFAULT now()
+    )
+  `);
+
+  // ── Migrations: add columns if they don't exist yet ──────────────────────
+  const migrations = [
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS plan text NOT NULL DEFAULT 'FREE'`,
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS plan_expiry timestamptz`,
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS display_name text`,
+    `ALTER TABLE project_files ADD COLUMN IF NOT EXISTS content text NOT NULL DEFAULT ''`,
+    `ALTER TABLE project_files ADD COLUMN IF NOT EXISTS language text NOT NULL DEFAULT 'plaintext'`,
+  ];
+  for (const sql of migrations) {
+    await pool.query(sql).catch(e => console.warn("Migration warning:", e.message));
+  }
+
   console.log("\u2705 Schema ready");
 }
 
@@ -227,9 +260,9 @@ const auth = (req, res, next) => {
 // Zod Schemas
 // ─────────────────────────────────────────────
 const signupSchema = z.object({
-  email: z.string().email(),
+  email: z.string().email().trim().toLowerCase(),
   password: z.string().min(6),
-  display_name: z.string().min(1).max(100).optional(),
+  display_name: z.string().min(1).max(100).nullish(),
 });
 
 const loginSchema = z.object({
@@ -246,8 +279,9 @@ const createWorkspaceSchema = z.object({
 // ─────────────────────────────────────────────
 async function getRoomMembers(roomId) {
   const { rows } = await pool.query(
-    `SELECT m.id, m.room_id AS "workspaceId", m.user_id AS "userId", m.role, m.joined_at AS "joinedAt",
-            json_build_object('id', u.id, 'email', u.email, 'displayName', u.display_name, 'createdAt', u.created_at) AS "user"
+    `SELECT m.user_id AS "userId", m.role, m.joined_at AS "joinedAt",
+            u.email, u.display_name AS "displayName",
+            json_build_object('id', u.id, 'email', u.email, 'displayName', u.display_name) AS "user"
      FROM room_members m
      JOIN users u ON u.id = m.user_id
      WHERE m.room_id = $1 ORDER BY m.joined_at ASC`,
@@ -303,7 +337,7 @@ app.post("/api/payment/verify", auth, async (req, res) => {
     const userId = req.user.sub;
 
     if (RAZORPAY_KEY_ID.includes("rzp_test_1234567890") && razorpay_order_id.startsWith("order_mock_")) {
-      await pool.query("UPDATE users SET plan = $1 WHERE id = $2", [plan, userId]);
+      await pool.query("UPDATE users SET plan = $1, plan_expiry = now() + interval '30 days' WHERE id = $2", [plan, userId]);
       return res.json({ success: true, message: "Mock payment verified" });
     }
 
@@ -317,7 +351,7 @@ app.post("/api/payment/verify", auth, async (req, res) => {
       await client.query("BEGIN");
       await client.query(`UPDATE payments SET status = 'completed', razorpay_payment_id = $1, razorpay_signature = $2, updated_at = now() 
                          WHERE razorpay_order_id = $3 AND user_id = $4`, [razorpay_payment_id, razorpay_signature, razorpay_order_id, userId]);
-      await client.query("UPDATE users SET plan = $1 WHERE id = $2", [plan, userId]);
+      await client.query("UPDATE users SET plan = $1, plan_expiry = now() + interval '30 days' WHERE id = $2", [plan, userId]);
       await client.query("COMMIT");
     } finally { client.release(); }
 
@@ -353,7 +387,7 @@ app.post("/api/auth/login", async (req, res) => {
 });
 
 app.get("/api/auth/me", auth, async (req, res) => {
-  const { rows } = await pool.query("SELECT id, email, display_name AS \"displayName\", plan FROM users WHERE id = $1", [req.user.sub]);
+  const { rows } = await pool.query("SELECT id, email, display_name AS \"displayName\", plan, plan_expiry AS \"planExpiry\" FROM users WHERE id = $1", [req.user.sub]);
   if (!rows[0]) return fail(res, "User not found", 404);
   ok(res, rows[0]);
 });
@@ -386,11 +420,116 @@ app.get("/api/workspaces/:id", auth, async (req, res) => {
   ok(res, { ...rows[0], members });
 });
 
+app.post("/api/workspaces/:id/invite", auth, async (req, res) => {
+  const { email, role } = req.body;
+  const workspaceId = req.params.id;
+  await pool.query(`INSERT INTO invitations (room_id, invited_email, invited_by, role) VALUES ($1, $2, $3, $4) ON CONFLICT (room_id, invited_email) DO UPDATE SET role = EXCLUDED.role, status = 'pending'`,
+    [workspaceId, email.toLowerCase(), req.user.sub, role || 'EDITOR']);
+  ok(res, { message: "Invitation sent" });
+});
+
+app.get("/api/invitations", auth, async (req, res) => {
+  const { rows } = await pool.query(`
+    SELECT 
+      i.id, i.role, i.status, i.created_at AS "createdAt",
+      i.room_id AS "workspaceId",
+      json_build_object('id', r.id, 'name', r.name) AS "workspace",
+      json_build_object('id', u.id, 'email', u.email, 'displayName', u.display_name) AS "invitedBy"
+    FROM invitations i 
+    JOIN rooms r ON r.id = i.room_id 
+    JOIN users u ON u.id = i.invited_by
+    WHERE i.invited_email = $1 AND i.status = 'pending'`,
+    [req.user.email.toLowerCase()]);
+  ok(res, rows);
+});
+
+app.post("/api/invitations/:id/accept", auth, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const { rows } = await client.query("SELECT * FROM invitations WHERE id = $1 AND invited_email = $2 AND status = 'pending'", [req.params.id, req.user.email.toLowerCase()]);
+    if (!rows[0]) throw new Error("Invitation not found");
+    await client.query("INSERT INTO room_members (room_id, user_id, role) VALUES ($1, $2, $3) ON CONFLICT (room_id, user_id) DO UPDATE SET role = EXCLUDED.role",
+      [rows[0].room_id, req.user.sub, rows[0].role]);
+    await client.query("UPDATE invitations SET status = 'accepted' WHERE id = $1", [req.params.id]);
+    await client.query("COMMIT");
+    ok(res, { message: "Invitation accepted" });
+  } catch (err) {
+    await client.query("ROLLBACK");
+    fail(res, err.message);
+  } finally { client.release(); }
+});
+
+app.post("/api/invitations/:id/reject", auth, async (req, res) => {
+  const { rows } = await pool.query("UPDATE invitations SET status = 'rejected' WHERE id = $1 AND invited_email = $2 RETURNING *", [req.params.id, req.user.email.toLowerCase()]);
+  if (!rows[0]) return fail(res, "Invitation not found");
+  ok(res, { message: "Invitation rejected" });
+});
+
+app.post("/api/workspaces/request-access", auth, async (req, res) => {
+  const { workspaceId, message } = req.body;
+  await pool.query(`INSERT INTO workspace_join_requests (room_id, user_id, message) VALUES ($1, $2, $3) ON CONFLICT (room_id, user_id) DO UPDATE SET message = EXCLUDED.message, status = 'pending'`,
+    [workspaceId, req.user.sub, message || '']);
+  ok(res, { message: "Request sent" });
+});
+
+app.get("/api/workspaces/:id/requests", auth, async (req, res) => {
+  const { rows } = await pool.query(`
+    SELECT jr.*, u.email, u.display_name AS "displayName" 
+    FROM workspace_join_requests jr 
+    JOIN users u ON u.id = jr.user_id 
+    WHERE jr.room_id = $1 AND jr.status = 'pending'`, [req.params.id]);
+  ok(res, rows);
+});
+
+app.post("/api/requests/:id/approve", auth, async (req, res) => {
+  const { role } = req.body;
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const { rows } = await client.query("SELECT * FROM workspace_join_requests WHERE id = $1", [req.params.id]);
+    if (!rows[0]) throw new Error("Request not found");
+    await client.query("INSERT INTO room_members (room_id, user_id, role) VALUES ($1, $2, $3) ON CONFLICT (room_id, user_id) DO UPDATE SET role = EXCLUDED.role",
+      [rows[0].room_id, rows[0].user_id, role || 'MEMBER']);
+    await client.query("UPDATE workspace_join_requests SET status = 'approved', reviewed_by = $1 WHERE id = $2", [req.user.sub, req.params.id]);
+    await client.query("COMMIT");
+    ok(res, { message: "Request approved" });
+  } catch (err) {
+    await client.query("ROLLBACK");
+    fail(res, err.message);
+  } finally { client.release(); }
+});
+
+app.post("/api/requests/:id/reject", auth, async (req, res) => {
+  await pool.query("UPDATE workspace_join_requests SET status = 'rejected', reviewed_by = $1 WHERE id = $2", [req.user.sub, req.params.id]);
+  ok(res, { message: "Request rejected" });
+});
+
+app.delete("/api/workspaces/:id/members/:userId", auth, async (req, res) => {
+  const { rows } = await pool.query("DELETE FROM room_members WHERE room_id = $1 AND user_id = $2 RETURNING *", [req.params.id, req.params.userId]);
+  if (!rows[0]) return fail(res, "Member not found");
+  ok(res, { message: "Member removed" });
+});
+
+app.put("/api/workspaces/:id/members/:userId/role", auth, async (req, res) => {
+  const { role } = req.body;
+  const { rows } = await pool.query("UPDATE room_members SET role = $1 WHERE room_id = $2 AND user_id = $3 RETURNING *", [role, req.params.id, req.params.userId]);
+  if (!rows[0]) return fail(res, "Member not found");
+  ok(res, { message: "Role updated" });
+});
+
+app.get("/api/workspaces/:id/collab-token", auth, async (req, res) => {
+  const membership = await checkMembership(req.params.id, req.user.sub);
+  if (!membership) return fail(res, "Unauthorized", 403);
+  const token = jwt.sign({ sub: req.user.sub, role: membership.role, docId: req.params.id, typ: "collab" }, JWT_SECRET, { expiresIn: "1h" });
+  ok(res, { token });
+});
+
 // ─────────────────────────────────────────────
 // File Routes
 // ─────────────────────────────────────────────
 app.get("/api/workspaces/:id/files", auth, async (req, res) => {
-  const { rows } = await pool.query("SELECT * FROM project_files WHERE room_id = $1", [req.params.id]);
+  const { rows } = await pool.query("SELECT * FROM project_files WHERE room_id = $1 ORDER BY created_at ASC", [req.params.id]);
   ok(res, rows);
 });
 
@@ -407,10 +546,149 @@ app.get("/api/files/:id", auth, async (req, res) => {
   ok(res, rows[0]);
 });
 
-app.put("/api/files/:id", auth, async (req, res) => {
-  const { content } = req.body;
-  const { rows } = await pool.query(`UPDATE project_files SET content = $1, updated_at = now() WHERE id = $2 RETURNING *`, [content, req.params.id]);
+// Support both PUT and PATCH for file updates
+const handleFileUpdate = async (req, res) => {
+  const { content, name, language } = req.body;
+  const sets = [];
+  const vals = [];
+  let i = 1;
+  if (content !== undefined) { sets.push(`content = $${i++}`); vals.push(content); }
+  if (name !== undefined) { sets.push(`name = $${i++}`); vals.push(name); }
+  if (language !== undefined) { sets.push(`language = $${i++}`); vals.push(language); }
+  sets.push(`updated_at = now()`);
+  vals.push(req.params.id);
+  const { rows } = await pool.query(`UPDATE project_files SET ${sets.join(', ')} WHERE id = $${i} RETURNING *`, vals);
+  if (!rows[0]) return fail(res, "Not found", 404);
   ok(res, rows[0]);
+};
+app.put("/api/files/:id", auth, handleFileUpdate);
+app.patch("/api/files/:id", auth, handleFileUpdate);
+
+app.delete("/api/files/:id", auth, async (req, res) => {
+  const { rows } = await pool.query("DELETE FROM project_files WHERE id = $1 RETURNING *", [req.params.id]);
+  if (!rows[0]) return fail(res, "Not found", 404);
+  ok(res, { message: "File deleted" });
+});
+
+app.get("/api/files/:id/versions", auth, async (req, res) => {
+  const { rows } = await pool.query(
+    `SELECT v.*, u.email AS "userEmail" FROM file_versions v LEFT JOIN users u ON u.id = v.created_by WHERE v.file_id = $1 ORDER BY v.created_at DESC LIMIT 50`,
+    [req.params.id]
+  );
+  ok(res, rows);
+});
+
+app.post("/api/files/:id/restore", auth, async (req, res) => {
+  const { versionId } = req.body;
+  const { rows: vRows } = await pool.query("SELECT content FROM file_versions WHERE id = $1 AND file_id = $2", [versionId, req.params.id]);
+  if (!vRows[0]) return fail(res, "Version not found", 404);
+  const { rows } = await pool.query("UPDATE project_files SET content = $1, updated_at = now() WHERE id = $2 RETURNING *", [vRows[0].content, req.params.id]);
+  ok(res, rows[0]);
+});
+
+// ─────────────────────────────────────────────
+// Workspace delete
+// ─────────────────────────────────────────────
+app.delete("/api/workspaces/:id", auth, async (req, res) => {
+  const membership = await checkMembership(req.params.id, req.user.sub);
+  if (!membership || membership.role !== 'OWNER') return fail(res, "Unauthorized", 403);
+  await pool.query("DELETE FROM rooms WHERE id = $1", [req.params.id]);
+  ok(res, { message: "Workspace deleted" });
+});
+
+// ─────────────────────────────────────────────
+// Activity / Audit Log
+// ─────────────────────────────────────────────
+app.get("/api/workspaces/:id/activity", auth, async (req, res) => {
+  // Return recent file updates as activity items
+  const { rows } = await pool.query(`
+    SELECT 
+      f.id, f.name AS "fileName", f.updated_at AS "createdAt",
+      'FILE_UPDATED' AS "actionType",
+      json_build_object('id', u.id, 'email', u.email) AS "user"
+    FROM project_files f
+    JOIN rooms r ON r.id = f.room_id
+    JOIN users u ON u.id = r.owner_id
+    WHERE f.room_id = $1
+    ORDER BY f.updated_at DESC
+    LIMIT 20
+  `, [req.params.id]);
+  ok(res, rows);
+});
+
+// ─────────────────────────────────────────────
+// Workspace Export
+// ─────────────────────────────────────────────
+app.get("/api/workspaces/:id/export", auth, async (req, res) => {
+  const { rows } = await pool.query("SELECT name, content, language FROM project_files WHERE room_id = $1", [req.params.id]);
+  res.setHeader("Content-Type", "application/json");
+  res.setHeader("Content-Disposition", `attachment; filename="workspace-${req.params.id}.json"`);
+  res.json(rows);
+});
+
+// ─────────────────────────────────────────────
+// Workspace Search
+// ─────────────────────────────────────────────
+app.post("/api/workspaces/:id/search", auth, async (req, res) => {
+  const { query } = req.body;
+  if (!query) return ok(res, []);
+  const { rows } = await pool.query(
+    `SELECT id, name, language, LEFT(content, 200) AS snippet FROM project_files WHERE room_id = $1 AND (name ILIKE $2 OR content ILIKE $2) LIMIT 20`,
+    [req.params.id, `%${query}%`]
+  );
+  ok(res, rows);
+});
+
+// ─────────────────────────────────────────────
+// Presence (stub — Yjs awareness handles real presence)
+// ─────────────────────────────────────────────
+app.post("/api/workspaces/:id/presence/enter", auth, async (req, res) => ok(res, { ok: true }));
+app.post("/api/workspaces/:id/presence/leave", auth, async (req, res) => ok(res, { ok: true }));
+app.get("/api/workspaces/:id/presence", auth, async (req, res) => ok(res, []));
+
+// ─────────────────────────────────────────────
+// Usage Routes
+// ─────────────────────────────────────────────
+app.get("/api/usage/status", auth, async (req, res) => {
+  const userId = req.user.sub;
+  const { rows } = await pool.query(
+    "SELECT COALESCE(SUM(duration), 0) AS total_seconds FROM workspace_usage WHERE user_id = $1 AND day = CURRENT_DATE",
+    [userId]
+  );
+
+  const userRows = await pool.query("SELECT plan FROM users WHERE id = $1", [userId]);
+  const plan = userRows.rows[0]?.plan || "FREE";
+
+  // 2 hours = 7200 seconds
+  const isLimited = plan === "FREE";
+  const limitSeconds = 7200;
+  const totalSeconds = parseInt(rows[0].total_seconds, 10);
+  const remainingSeconds = Math.max(0, limitSeconds - totalSeconds);
+  const exceeded = isLimited && totalSeconds >= limitSeconds;
+
+  res.json({
+    success: true,
+    data: {
+      totalSeconds,
+      limitSeconds,
+      remainingSeconds,
+      exceeded,
+      plan
+    }
+  });
+});
+
+app.post("/api/usage/report", auth, async (req, res) => {
+  const { workspaceId, seconds } = req.body;
+  if (!workspaceId || !seconds) return fail(res, "Missing workspaceId or seconds");
+
+  await pool.query(
+    `INSERT INTO workspace_usage (user_id, room_id, duration, day)
+     VALUES ($1, $2, $3, CURRENT_DATE)`,
+    [req.user.sub, workspaceId, seconds]
+  );
+
+  res.json({ success: true });
 });
 
 // ─────────────────────────────────────────────

@@ -5,12 +5,14 @@
   "scripts": {
     "install:backend": "cd backend && npm install",
     "install:client": "cd client && npm install",
-    "install:all": "npm install && npm run install:backend && npm run install:client",
-    "prisma:generate": "cd backend && npx prisma generate",
-    "prisma:migrate": "cd backend && npx prisma migrate dev",
+    "install:collab": "cd collab && npm install",
+    "install:all": "npm install && npm run install:backend && npm run install:client && npm run install:collab",
+    "prisma:generate": "cd collab && npx prisma generate",
+    "prisma:migrate": "cd collab && npx prisma migrate dev",
     "dev:backend": "cd backend && npm run dev",
     "dev:client": "cd client && npm run dev",
-    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:client\""
+    "dev:collab": "cd collab && npm run dev",
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:client\" \"npm run dev:collab\""
   },
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",

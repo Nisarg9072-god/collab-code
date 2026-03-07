@@ -4,110 +4,94 @@ import { WebSocketServer } from "ws";
 import * as Y from "yjs";
 import jwt from "jsonwebtoken";
 import pino from "pino";
-import pkg from "@prisma/client";
+import pg from "pg";
 import Redis from "ioredis";
 
-const { PrismaClient, Role } = pkg;
-const prisma = new PrismaClient();
 const logger = pino({ level: process.env.LOG_LEVEL || "info" });
-
 const HOST = process.env.COLLAB_HOST || "0.0.0.0";
 const PORT = Number(process.env.COLLAB_PORT || 1234);
 const JWT_SECRET = process.env.JWT_SECRET || "dev_secret_change_me";
-
-// Redis Setup
 const REDIS_URL = process.env.REDIS_URL;
 const INSTANCE_ID = process.env.INSTANCE_ID || "collab-" + Math.random().toString(36).slice(2);
+
+const { Pool } = pg;
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
 let redisPub, redisSub;
 if (REDIS_URL) {
   logger.info({ REDIS_URL }, "Connecting to Redis...");
   redisPub = new Redis(REDIS_URL);
   redisSub = new Redis(REDIS_URL);
-
-  redisSub.subscribe("doc-updates", (err) => {
-    if (err) logger.error({ err }, "Failed to subscribe to redis");
-    else logger.info("Subscribed to doc-updates");
-  });
-
+  redisSub.subscribe("doc-updates");
   redisSub.on("message", (channel, msg) => {
-    if (channel !== "doc-updates") return;
     try {
       const { docId, from, data } = JSON.parse(msg);
       if (from === INSTANCE_ID) return;
-
       const entry = docs.get(docId);
-      if (!entry) return;
-
-      const update = Uint8Array.from(Buffer.from(data, "base64"));
-      Y.applyUpdate(entry.ydoc, update);
-
-      entry.clients.forEach((client) => {
-        if (client.readyState === 1) {
-          client.send(update);
-        }
-      });
-    } catch (err) {
-      logger.error({ err }, "Redis message error");
-    }
+      if (entry) {
+        Y.applyUpdate(entry.ydoc, Uint8Array.from(Buffer.from(data, "base64")));
+        entry.clients.forEach(c => c.readyState === 1 && c.send(Uint8Array.from(Buffer.from(data, "base64"))));
+      }
+    } catch { }
   });
 }
 
 // In-memory doc cache
-const docs = new Map(); // docId -> { ydoc, clients: Set, saveTimer? }
+const docs = new Map(); // fileId -> { ydoc, clients: Set, saveTimer? }
 
-async function loadDoc(docId) {
-  let entry = docs.get(docId);
+async function loadDoc(fileId) {
+  let entry = docs.get(fileId);
   if (entry) return entry;
 
   const ydoc = new Y.Doc();
-  const stateRow = await prisma.docState.findUnique({ where: { docId } });
-  
-  if (stateRow?.state) {
-    Y.applyUpdate(ydoc, new Uint8Array(stateRow.state));
+  // Try to load from project_file_yjs_states
+  const { rows } = await pool.query("SELECT state FROM project_file_yjs_states WHERE file_id = $1", [fileId]);
+
+  if (rows[0]?.state) {
+    Y.applyUpdate(ydoc, new Uint8Array(rows[0].state));
+  } else {
+    // If no Yjs state, try initial load from project_files content
+    const { rows: fileRows } = await pool.query("SELECT content FROM project_files WHERE id = $1", [fileId]);
+    if (fileRows[0]?.content) {
+      const text = ydoc.getText("monaco");
+      text.insert(0, fileRows[0].content);
+    }
   }
 
   entry = { ydoc, clients: new Set(), saveTimer: null };
-  docs.set(docId, entry);
+  docs.set(fileId, entry);
 
   // Debounced persist
   ydoc.on("update", () => {
     if (entry.saveTimer) clearTimeout(entry.saveTimer);
-    entry.saveTimer = setTimeout(() => saveDoc(docId).catch((err) => {
-      logger.error({ err, docId }, "Failed to save doc");
-    }), 500);
+    entry.saveTimer = setTimeout(() => saveDoc(fileId).catch((err) => {
+      logger.error({ err, fileId }, "Failed to save doc");
+    }), 2000); // 2s debounce
   });
 
   return entry;
 }
 
-async function saveDoc(docId) {
-  const entry = docs.get(docId);
+async function saveDoc(fileId) {
+  const entry = docs.get(fileId);
   if (!entry) return;
 
   const update = Y.encodeStateAsUpdate(entry.ydoc);
-  const bytes = Buffer.from(update);
+  // Also push to project_files to keep REST fallback updated
+  const text = entry.ydoc.getText("monaco").toString();
 
-  await prisma.docState.upsert({
-    where: { docId },
-    update: { state: bytes },
-    create: { docId, state: bytes },
-  });
-  logger.info({ docId, bytes: bytes.length }, "Saved doc to DB");
-}
-
-async function saveSnapshot(docId) {
-  const entry = docs.get(docId);
-  if (!entry) return;
-
-  const update = Y.encodeStateAsUpdate(entry.ydoc);
-  await prisma.docSnapshot.create({
-    data: {
-      docId,
-      state: Buffer.from(update),
-    },
-  });
-  logger.info({ docId }, "Saved snapshot to DB");
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query(`INSERT INTO project_file_yjs_states (file_id, state, updated_at) VALUES ($1, $2, now()) 
+                       ON CONFLICT (file_id) DO UPDATE SET state = EXCLUDED.state, updated_at = now()`, [fileId, Buffer.from(update)]);
+    await client.query(`UPDATE project_files SET content = $1, updated_at = now() WHERE id = $2`, [text, fileId]);
+    await client.query("COMMIT");
+    logger.info({ fileId, bytes: update.length }, "Saved doc to DB");
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally { client.release(); }
 }
 
 function parseQuery(url) {
@@ -115,20 +99,23 @@ function parseQuery(url) {
   return Object.fromEntries(u.searchParams.entries());
 }
 
-async function authenticateAndAuthorize(docId, token) {
+async function authenticateAndAuthorize(fileId, token) {
   if (!token) throw new Error("missing token");
-  
-  try {
-    const payload = jwt.verify(token, JWT_SECRET);
-    
-    // Strict checks
-    if (payload.typ !== "collab") throw new Error("invalid token type");
-    if (payload.docId !== docId) throw new Error("doc mismatch");
-    
-    return { userId: payload.sub, role: payload.role };
-  } catch (err) {
-    throw new Error("unauthorized: " + err.message);
-  }
+  const payload = jwt.verify(token, JWT_SECRET);
+  if (payload.typ !== "collab") throw new Error("invalid token type");
+
+  // fileId in collab token must match path
+  const reqFileId = payload.docId; // For simplicity we called it docId in the token
+  if (reqFileId !== fileId) throw new Error("doc mismatch");
+
+  // Verify membership in DB (Strict check)
+  const { rows } = await pool.query(`
+    SELECT m.role FROM room_members m 
+    JOIN project_files f ON f.room_id = m.room_id 
+    WHERE f.id = $1 AND m.user_id = $2`, [fileId, payload.sub]);
+
+  if (!rows[0]) throw new Error("Unauthorized access to file");
+  return { userId: payload.sub, role: rows[0].role };
 }
 
 const server = http.createServer((req, res) => {
@@ -136,9 +123,9 @@ const server = http.createServer((req, res) => {
   res.end(JSON.stringify({ ok: true, service: "collab-server" }));
 });
 
-const wss = new WebSocketServer({ 
-  server, 
-  maxPayload: 1024 * 1024 // 1MB cap per message
+const wss = new WebSocketServer({
+  server,
+  maxPayload: 10 * 1024 * 1024 // 10MB cap
 });
 
 // Ping/Pong keepalive
@@ -154,26 +141,21 @@ wss.on("connection", async (ws, req) => {
   ws.isAlive = true;
   ws.on("pong", () => (ws.isAlive = true));
 
-  let docId = null;
+  let fileId = null;
   let userId = null;
 
   try {
     const pathname = new URL(req.url, "http://localhost").pathname;
-    docId = pathname.replace("/", "").trim();
-    if (!docId) throw new Error("missing docId");
+    fileId = pathname.replace("/", "").trim();
+    if (!fileId) throw new Error("missing fileId");
 
     const { token } = parseQuery(req.url);
-    const { userId: uid, role } = await authenticateAndAuthorize(docId, token);
+    const { userId: uid, role } = await authenticateAndAuthorize(fileId, token);
     userId = uid;
 
-    logger.info({ userId, docId, role }, "Client connected");
-    
-    // Audit Log: WS_CONNECT
-    await prisma.docEvent.create({
-      data: { docId, userId: uid, type: "WS_CONNECT" }
-    });
+    logger.info({ userId, fileId, role }, "Client connected");
 
-    const entry = await loadDoc(docId);
+    const entry = await loadDoc(fileId);
     entry.clients.add(ws);
 
     // 1. Send FULL state once on connect
@@ -182,50 +164,36 @@ wss.on("connection", async (ws, req) => {
 
     // 2. Handle incremental updates
     ws.on("message", (msg) => {
-      logger.info({ size: msg.length }, "Received message from client");
-      if (role === Role.VIEWER) return; // Read-only
+      if (role === 'VIEWER') return;
 
       try {
         const update = new Uint8Array(msg);
-        
-        // Apply to local doc
         Y.applyUpdate(entry.ydoc, update);
 
-        // Broadcast ONLY this update (incremental)
         entry.clients.forEach((client) => {
           if (client !== ws && client.readyState === 1) {
             client.send(update);
           }
         });
-        
-        // Audit Log: UPDATE (async)
-        prisma.docEvent.create({
-          data: { docId, userId, type: "UPDATE", bytes: update.length }
-        })
-        .then(() => logger.info("Audit log UPDATE created"))
-        .catch(err => logger.error({ err }, "Failed to log update event"));
 
-        // Redis Publish
         if (redisPub) {
           redisPub.publish("doc-updates", JSON.stringify({
-            docId,
+            docId: fileId,
             from: INSTANCE_ID,
             data: Buffer.from(update).toString("base64"),
           })).catch(err => logger.error({ err }, "Redis publish failed"));
         }
-
       } catch (err) {
-        logger.error({ err, docId }, "Error processing update");
+        logger.error({ err, fileId }, "Error processing update");
       }
     });
 
     ws.on("close", async () => {
-      entry.clients.delete(ws);
-      logger.info({ userId, docId }, "Client disconnected");
-      if (entry.clients.size === 0) {
-        // Last user left: save doc state AND snapshot
-        await saveDoc(docId);
-        await saveSnapshot(docId);
+      if (entry) {
+        entry.clients.delete(ws);
+        if (entry.clients.size === 0) {
+          await saveDoc(fileId);
+        }
       }
     });
 
@@ -239,17 +207,16 @@ wss.on("connection", async (ws, req) => {
 process.on("SIGINT", async () => {
   logger.info("Shutting down...");
   clearInterval(interval);
-  
+
   const saves = [];
   for (const [docId] of docs) {
     saves.push(saveDoc(docId));
-    saves.push(saveSnapshot(docId));
   }
-  await Promise.all(saves);
-  
-  await prisma.$disconnect();
+  await Promise.allSettled(saves);
+
   if (redisPub) redisPub.quit();
   if (redisSub) redisSub.quit();
+  pool.end();
   process.exit(0);
 });
 

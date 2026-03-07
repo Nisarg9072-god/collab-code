@@ -1,20 +1,13 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { useAuth } from "@/context/AuthContext";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/UI/dialog";
 import { Button } from "@/components/UI/button";
-import { useNavigate } from "react-router-dom";
-
-function getUserId(): string {
-  try {
-    const uid = localStorage.getItem("cc.user.id");
-    return uid || "anon";
-  } catch {
-    return "anon";
-  }
-}
 
 export default function UsageLimitDialog() {
   const navigate = useNavigate();
-  const uid = useMemo(getUserId, []);
+  const { user } = useAuth();
+  const uid = user?.id || "anon";
   const [open, setOpen] = useState(false);
   const shownKey = `cc.popup.shown.${uid}`;
 

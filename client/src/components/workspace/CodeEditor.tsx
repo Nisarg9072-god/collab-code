@@ -1,8 +1,11 @@
-import { useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import Editor, { OnMount } from "@monaco-editor/react";
 import type { ConnectionStatus } from "@/pages/WorkspaceEditor";
 import { Loader2 } from "lucide-react";
 import { useTheme } from "next-themes";
+import * as Y from "yjs";
+import { WebsocketProvider } from "y-websocket";
+import { MonacoBinding } from "y-monaco";
 
 interface CodeEditorProps {
   code: string;
@@ -11,6 +14,8 @@ interface CodeEditorProps {
   collaborators: { name: string; status: "online" | "idle" | "offline" }[];
   connectionStatus: ConnectionStatus;
   readOnly?: boolean;
+  ydoc?: Y.Doc;
+  provider?: WebsocketProvider | null;
   onDiagnosticsChange?: (markers: Array<{
     message: string;
     severity: number;
@@ -21,7 +26,7 @@ interface CodeEditorProps {
   }>) => void;
 }
 
-const CodeEditor = ({ code, language, onChange, collaborators, connectionStatus, readOnly, onDiagnosticsChange }: CodeEditorProps) => {
+const CodeEditor = ({ code, language, onChange, collaborators, connectionStatus, readOnly, ydoc, provider, onDiagnosticsChange }: CodeEditorProps) => {
   const editorRef = useRef<any>(null);
   const { theme } = useTheme();
 
@@ -46,10 +51,27 @@ const CodeEditor = ({ code, language, onChange, collaborators, connectionStatus,
         pushMarkers();
       });
       editor.onDidDispose(() => {
-        try { disposable.dispose(); } catch {}
+        try { disposable.dispose(); } catch { }
       });
     }
   };
+
+  useEffect(() => {
+    if (!ydoc || !provider || !editorRef.current) return;
+
+    const type = ydoc.getText("monaco");
+
+    const binding = new MonacoBinding(
+      type,
+      editorRef.current.getModel(),
+      new Set([editorRef.current]),
+      provider.awareness
+    );
+
+    return () => {
+      binding.destroy();
+    };
+  }, [ydoc, provider, editorRef.current]);
 
   const isReadOnly = !!readOnly || connectionStatus === "offline";
 
