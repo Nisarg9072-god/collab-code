@@ -756,16 +756,10 @@ app.get("/api/workspaces/:id/git/status", auth, async (req, res) => {
 app.use("/api", (req, res) => res.status(404).json({ success: false, error: "Route not found" }));
 
 // ─────────────────────────────────────────────
-// Frontend Static Serving & SPA Fallback
+// Root Health Check Route
 // ─────────────────────────────────────────────
-app.use(express.static(path.join(__dirname, "../client/dist")));
-
-app.use((req, res, next) => {
-  if (req.method === 'GET') {
-    res.sendFile(path.join(__dirname, "../client/dist/index.html"));
-  } else {
-    next();
-  }
+app.get("/", (req, res) => {
+  res.send("CollabCode Backend Running Successfully");
 });
 
 const httpServer = createServer(app);
