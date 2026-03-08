@@ -34,9 +34,10 @@ process.on("unhandledRejection", (reason, promise) => {
 
 process.on("uncaughtException", (err) => {
   console.error("Uncaught Exception thrown:", err);
+  fs.writeFileSync('crash.log', String(err.stack || err));
 });
 
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 5000;
 const JWT_SECRET = process.env.JWT_SECRET || "supersecret";
 
 const RAZORPAY_KEY_ID = process.env.RAZORPAY_KEY_ID || "rzp_test_1234567890abcdef";
@@ -752,7 +753,20 @@ app.get("/api/workspaces/:id/git/status", auth, async (req, res) => {
 // ─────────────────────────────────────────────
 // Server Start & WebSockets
 // ─────────────────────────────────────────────
-app.use((req, res) => res.status(404).json({ success: false, error: "Route not found" }));
+app.use("/api", (req, res) => res.status(404).json({ success: false, error: "Route not found" }));
+
+// ─────────────────────────────────────────────
+// Frontend Static Serving & SPA Fallback
+// ─────────────────────────────────────────────
+app.use(express.static(path.join(__dirname, "../client/dist")));
+
+app.use((req, res, next) => {
+  if (req.method === 'GET') {
+    res.sendFile(path.join(__dirname, "../client/dist/index.html"));
+  } else {
+    next();
+  }
+});
 
 const httpServer = createServer(app);
 const lspWss = new WebSocketServer({ noServer: true });

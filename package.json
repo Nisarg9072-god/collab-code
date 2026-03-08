@@ -12,7 +12,9 @@
     "dev:backend": "cd backend && npm run dev",
     "dev:client": "cd client && npm run dev",
     "dev:collab": "cd collab && npm run dev",
-    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:client\" \"npm run dev:collab\""
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:client\" \"npm run dev:collab\"",
+    "build": "npm run install:all && cd client && npm run build",
+    "start": "cd backend && node index.js"
   },
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",
