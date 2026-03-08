@@ -29,7 +29,7 @@ export default function ProfilePage() {
             <div className="mx-auto mb-4 relative group">
               <div className="absolute -inset-1 bg-gradient-to-r from-teal-500 to-cyan-500 rounded-full blur opacity-25 group-hover:opacity-50 transition duration-1000 group-hover:duration-200" />
               <Avatar className="h-24 w-24 border-2 border-white/20 relative">
-                <AvatarImage src="/avatars/01.png" alt={user.email} />
+                <AvatarImage src="" alt={user.email} />
                 <AvatarFallback className="text-2xl bg-gradient-to-br from-teal-500 to-cyan-500 text-white">
                   {(displayName || user.email).charAt(0).toUpperCase()}
                 </AvatarFallback>
