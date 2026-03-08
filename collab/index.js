@@ -104,15 +104,15 @@ async function authenticateAndAuthorize(fileId, token) {
   const payload = jwt.verify(token, JWT_SECRET);
   if (payload.typ !== "collab") throw new Error("invalid token type");
 
-  // fileId in collab token must match path
-  const reqFileId = payload.docId; // For simplicity we called it docId in the token
-  if (reqFileId !== fileId) throw new Error("doc mismatch");
+  // The collab token has docId = workspaceId (room id).
+  // Verify the file belongs to that workspace AND user is a member.
+  const workspaceId = payload.docId;
 
-  // Verify membership in DB (Strict check)
   const { rows } = await pool.query(`
     SELECT m.role FROM room_members m 
     JOIN project_files f ON f.room_id = m.room_id 
-    WHERE f.id = $1 AND m.user_id = $2`, [fileId, payload.sub]);
+    WHERE f.id = $1 AND m.room_id = $2 AND m.user_id = $3`,
+    [fileId, workspaceId, payload.sub]);
 
   if (!rows[0]) throw new Error("Unauthorized access to file");
   return { userId: payload.sub, role: rows[0].role };

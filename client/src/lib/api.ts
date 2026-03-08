@@ -143,8 +143,8 @@ export const api = {
       });
     },
     updateRole: async (workspaceId: string, userId: string, role: string) => {
-      return safeFetch(`${API_URL}/workspaces/${workspaceId}/members/${userId}`, {
-        method: "PATCH",
+      return safeFetch(`${API_URL}/workspaces/${workspaceId}/members/${userId}/role`, {
+        method: "PUT",
         headers: jsonHeaders(),
         body: JSON.stringify({ role }),
       });
@@ -360,5 +360,35 @@ export const api = {
       headers: jsonHeaders(),
       body: JSON.stringify({ workspaceId, seconds }),
     }),
-  }
+  },
+  sessions: {
+    // Stub — the backend doesn't have a dedicated sessions API; WorkspaceDetail
+    // tries to call this, so we return null gracefully to avoid crashes.
+    get: async (_workspaceId: string) => null,
+  },
 };
+
+// ─── Workspace-level broadcast WebSocket ────────────────────────────────────
+// Connects to ws://localhost:3001/ws and returns the WebSocket instance.
+// Use this to listen for file_created / file_deleted / file_renamed events.
+const WS_BASE = (import.meta as any).env?.VITE_WS_URL ||
+  (window.location.hostname === 'localhost'
+    ? 'ws://localhost:3001'
+    : `wss://${window.location.hostname}:3001`);
+
+export function openWorkspaceSocket(
+  workspaceId: string,
+  token: string,
+  onMessage: (data: any) => void
+): WebSocket | null {
+  try {
+    const ws = new WebSocket(`${WS_BASE}/ws?workspaceId=${encodeURIComponent(workspaceId)}&token=${encodeURIComponent(token)}`);
+    ws.onmessage = (event) => {
+      try { onMessage(JSON.parse(event.data)); } catch { }
+    };
+    ws.onerror = () => { /* silent — real-time sync is additive */ };
+    return ws;
+  } catch {
+    return null;
+  }
+}

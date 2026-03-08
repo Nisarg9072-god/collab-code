@@ -9,7 +9,7 @@ import StatusBar from "@/components/workspace/StatusBar";
 import ShareModal from "@/components/workspace/ShareModal";
 import VersionHistory from "@/components/workspace/VersionHistory";
 import UsageLimitDialog from "@/components/workspace/UsageLimitDialog";
-import { api } from "@/lib/api";
+import { api, openWorkspaceSocket } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import * as Y from "yjs";
 import { WebsocketProvider } from "y-websocket";
@@ -93,6 +93,7 @@ const WorkspaceEditor = () => {
   const [collabToken, setCollabToken] = useState<string | undefined>(undefined);
   const [ydoc] = useState(() => new Y.Doc());
   const [provider, setProvider] = useState<WebsocketProvider | null>(null);
+  const wsRef = useRef<WebSocket | null>(null);
 
   // Must be at top level before effects that use it
   const { user } = useAuth();
@@ -139,6 +140,13 @@ const WorkspaceEditor = () => {
         // Don't toast on activity errors — workspace still usable
       }).finally(() => setLoading(false));
     }
+    return () => {
+      // Close the workspace-level broadcast WebSocket on unmount
+      if (wsRef.current) {
+        wsRef.current.close();
+        wsRef.current = null;
+      }
+    };
   }, [id]);
 
   // Fetch collab token & Setup Yjs when file changes
@@ -150,6 +158,32 @@ const WorkspaceEditor = () => {
       const token = res?.token;
       if (!token) return;
       setCollabToken(token);
+
+      // ─── Workspace-level broadcast WebSocket (file-tree sync) ───
+      // Only open once per workspace (reuse if already open)
+      if (!wsRef.current || wsRef.current.readyState === WebSocket.CLOSED || wsRef.current.readyState === WebSocket.CLOSING) {
+        const ws = openWorkspaceSocket(id, token, (data) => {
+          if (!data?.type) return;
+          if (data.type === 'file_created') {
+            // Add file to list only if not already present
+            setFiles(prev => {
+              if (prev.find(f => f.id === data.payload?.id)) return prev;
+              return [...prev, data.payload as File];
+            });
+          } else if (data.type === 'file_deleted') {
+            setFiles(prev => prev.filter(f => f.id !== data.payload?.id));
+            // If the deleted file was active, deselect
+            setActiveFileId(prev => prev === data.payload?.id ? null : prev);
+          } else if (data.type === 'file_renamed') {
+            setFiles(prev => prev.map(f =>
+              f.id === data.payload?.id ? { ...f, name: data.payload.name } : f
+            ));
+          }
+        });
+        if (ws) wsRef.current = ws;
+      }
+
+      // ─── Yjs provider (code content sync) ───
       setProvider(prev => {
         if (prev) prev.destroy();
         const serverUrl = window.location.hostname === 'localhost'

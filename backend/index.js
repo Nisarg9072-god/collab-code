@@ -420,6 +420,16 @@ app.get("/api/workspaces/:id", auth, async (req, res) => {
   ok(res, { ...rows[0], members });
 });
 
+app.patch("/api/workspaces/:id", auth, async (req, res) => {
+  const { name } = req.body || {};
+  if (!name || !name.trim()) return fail(res, "Name is required");
+  const membership = await checkMembership(req.params.id, req.user.sub);
+  if (!membership || !['OWNER', 'ADMIN'].includes(membership.role)) return fail(res, "Unauthorized", 403);
+  const { rows } = await pool.query("UPDATE rooms SET name = $1, updated_at = now() WHERE id = $2 RETURNING *", [name.trim(), req.params.id]);
+  if (!rows[0]) return fail(res, "Not found", 404);
+  ok(res, rows[0]);
+});
+
 app.post("/api/workspaces/:id/invite", auth, async (req, res) => {
   const { email, role } = req.body;
   const workspaceId = req.params.id;
@@ -506,17 +516,41 @@ app.post("/api/requests/:id/reject", auth, async (req, res) => {
 });
 
 app.delete("/api/workspaces/:id/members/:userId", auth, async (req, res) => {
+  // Only OWNER or ADMIN can remove members
+  const requesterMembership = await checkMembership(req.params.id, req.user.sub);
+  if (!requesterMembership || !['OWNER', 'ADMIN'].includes(requesterMembership.role)) return fail(res, "Unauthorized", 403);
+  // Can't remove the OWNER
+  const target = await checkMembership(req.params.id, req.params.userId);
+  if (target?.role === 'OWNER') return fail(res, "Cannot remove the workspace owner", 403);
   const { rows } = await pool.query("DELETE FROM room_members WHERE room_id = $1 AND user_id = $2 RETURNING *", [req.params.id, req.params.userId]);
   if (!rows[0]) return fail(res, "Member not found");
   ok(res, { message: "Member removed" });
 });
 
-app.put("/api/workspaces/:id/members/:userId/role", auth, async (req, res) => {
+// PUT and PATCH both work for role updates
+const handleRoleUpdate = async (req, res) => {
   const { role } = req.body;
-  const { rows } = await pool.query("UPDATE room_members SET role = $1 WHERE room_id = $2 AND user_id = $3 RETURNING *", [role, req.params.id, req.params.userId]);
+  const validRoles = ['ADMIN', 'EDITOR', 'MEMBER', 'VIEWER', 'VISITOR'];
+  if (!role || !validRoles.includes(role)) return fail(res, `Invalid role. Must be one of: ${validRoles.join(', ')}`);
+
+  // Only OWNER or ADMIN can change roles
+  const requesterMembership = await checkMembership(req.params.id, req.user.sub);
+  if (!requesterMembership || !['OWNER', 'ADMIN'].includes(requesterMembership.role)) return fail(res, "Unauthorized — only OWNER or ADMIN can change roles", 403);
+
+  // ADMIN cannot change OWNER's role
+  const targetMembership = await checkMembership(req.params.id, req.params.userId);
+  if (targetMembership?.role === 'OWNER') return fail(res, "Cannot change the OWNER's role", 403);
+
+  const { rows } = await pool.query(
+    "UPDATE room_members SET role = $1 WHERE room_id = $2 AND user_id = $3 RETURNING *",
+    [role, req.params.id, req.params.userId]
+  );
   if (!rows[0]) return fail(res, "Member not found");
   ok(res, { message: "Role updated" });
-});
+};
+
+app.put("/api/workspaces/:id/members/:userId/role", auth, handleRoleUpdate);
+app.patch("/api/workspaces/:id/members/:userId", auth, handleRoleUpdate);
 
 app.get("/api/workspaces/:id/collab-token", auth, async (req, res) => {
   const membership = await checkMembership(req.params.id, req.user.sub);
@@ -537,6 +571,8 @@ app.post("/api/workspaces/:id/files", auth, async (req, res) => {
   const { name, content, language } = req.body;
   const { rows } = await pool.query(`INSERT INTO project_files (room_id, name, content, language) VALUES ($1, $2, $3, $4) RETURNING *`,
     [req.params.id, name, content || "", language || "plaintext"]);
+  // Broadcast to all users watching this workspace
+  broadcastToWorkspace(req.params.id, { type: 'file_created', payload: rows[0] });
   ok(res, rows[0], 201);
 });
 
@@ -559,6 +595,10 @@ const handleFileUpdate = async (req, res) => {
   vals.push(req.params.id);
   const { rows } = await pool.query(`UPDATE project_files SET ${sets.join(', ')} WHERE id = $${i} RETURNING *`, vals);
   if (!rows[0]) return fail(res, "Not found", 404);
+  // Broadcast rename events so other users' file trees update
+  if (name !== undefined) {
+    broadcastToWorkspace(rows[0].room_id, { type: 'file_renamed', payload: { id: rows[0].id, name: rows[0].name, room_id: rows[0].room_id } });
+  }
   ok(res, rows[0]);
 };
 app.put("/api/files/:id", auth, handleFileUpdate);
@@ -567,6 +607,8 @@ app.patch("/api/files/:id", auth, handleFileUpdate);
 app.delete("/api/files/:id", auth, async (req, res) => {
   const { rows } = await pool.query("DELETE FROM project_files WHERE id = $1 RETURNING *", [req.params.id]);
   if (!rows[0]) return fail(res, "Not found", 404);
+  // Broadcast to all users watching this workspace
+  broadcastToWorkspace(rows[0].room_id, { type: 'file_deleted', payload: { id: rows[0].id, room_id: rows[0].room_id } });
   ok(res, { message: "File deleted" });
 });
 
@@ -715,6 +757,24 @@ app.use((req, res) => res.status(404).json({ success: false, error: "Route not f
 const httpServer = createServer(app);
 const lspWss = new WebSocketServer({ noServer: true });
 const termWss = new WebSocketServer({ noServer: true });
+const collabWss = new WebSocketServer({ noServer: true });
+
+// ─────────────────────────────────────────────
+// Workspace Broadcast System
+// ─────────────────────────────────────────────
+// Map of workspaceId → Set of WebSocket clients
+const workspaceClients = new Map();
+
+function broadcastToWorkspace(workspaceId, data) {
+  const clients = workspaceClients.get(workspaceId);
+  if (!clients || clients.size === 0) return;
+  const msg = JSON.stringify(data);
+  for (const ws of clients) {
+    if (ws.readyState === 1 /* OPEN */) {
+      try { ws.send(msg); } catch { /* ignore */ }
+    }
+  }
+}
 
 httpServer.on('upgrade', (request, socket, head) => {
   const url = new URL(request.url, `http://${request.headers.host}`);
@@ -728,9 +788,46 @@ httpServer.on('upgrade', (request, socket, head) => {
     termWss.handleUpgrade(request, socket, head, (ws) => {
       termWss.emit('connection', ws, request);
     });
+  } else if (pathname === '/ws') {
+    collabWss.handleUpgrade(request, socket, head, (ws) => {
+      collabWss.emit('connection', ws, request);
+    });
   } else {
     socket.destroy();
   }
+});
+
+// Workspace-level collaboration WebSocket (file-tree sync)
+collabWss.on('connection', async (ws, req) => {
+  const url = new URL(req.url, `http://${req.headers.host}`);
+  const workspaceId = url.searchParams.get('workspaceId');
+  const token = url.searchParams.get('token');
+  if (!workspaceId || !token) return ws.close(1008, 'Missing params');
+  try {
+    jwt.verify(token, JWT_SECRET);
+  } catch {
+    return ws.close(1008, 'Invalid token');
+  }
+
+  // Register client in workspace room
+  if (!workspaceClients.has(workspaceId)) workspaceClients.set(workspaceId, new Set());
+  workspaceClients.get(workspaceId).add(ws);
+
+  ws.on('close', () => {
+    const clients = workspaceClients.get(workspaceId);
+    if (clients) {
+      clients.delete(ws);
+      if (clients.size === 0) workspaceClients.delete(workspaceId);
+    }
+  });
+
+  ws.on('error', () => {
+    const clients = workspaceClients.get(workspaceId);
+    if (clients) clients.delete(ws);
+  });
+
+  // Send a welcome/connected message
+  ws.send(JSON.stringify({ type: 'connected', workspaceId }));
 });
 
 lspWss.on('connection', async (ws, req) => {
