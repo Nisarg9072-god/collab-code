@@ -56,7 +56,11 @@ app.use(pinoHttp({ level: "warn" }));
 app.use(
   cors({
     origin: (origin, callback) => {
-      if (!origin || /^http:\/\/localhost(:\d+)?$/.test(origin)) {
+      const allowedOrigins = [
+        "https://collabcode-virid.vercel.app",
+        "https://collabcode-backend-p2ry.onrender.com"
+      ];
+      if (!origin || allowedOrigins.includes(origin) || /^http:\/\/localhost(:\d+)?$/.test(origin)) {
         callback(null, true);
       } else {
         callback(new Error("Not allowed by CORS"));
