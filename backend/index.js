@@ -754,10 +754,16 @@ app.get("/api/workspaces/:id/git/status", auth, async (req, res) => {
   res.json({ status });
 });
 
-// ─────────────────────────────────────────────
-// Server Start & WebSockets
-// ─────────────────────────────────────────────
 app.use("/api", (req, res) => res.status(404).json({ success: false, error: "Route not found" }));
+
+// ─────────────────────────────────────────────
+// Global Error Handler
+// ─────────────────────────────────────────────
+app.use((err, req, res, next) => {
+  console.error("Global Route Error:", err.message || err);
+  const status = err.status || (err instanceof ZodError ? 400 : 500);
+  res.status(status).json({ success: false, error: err.message || "Internal Server Error" });
+});
 
 // ─────────────────────────────────────────────
 // Root Health Check Route
