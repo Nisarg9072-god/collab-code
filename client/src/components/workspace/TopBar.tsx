@@ -178,12 +178,12 @@ const TopBar = ({
               variant="ghost"
               size="icon"
               className="h-7 w-7 text-muted-foreground hover:text-destructive transition-colors ml-1"
-              onClick={() => navigate("/")}
+              onClick={() => navigate("/dashboard")}
             >
               <LogOut className="h-4 w-4" />
             </Button>
           </TooltipTrigger>
-          <TooltipContent>Leave workspace</TooltipContent>
+          <TooltipContent>Back to Dashboard</TooltipContent>
         </Tooltip>
       </div>
     </div>

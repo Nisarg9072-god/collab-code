@@ -481,6 +481,34 @@ app.post("/api/invitations/:id/reject", auth, async (req, res) => {
   ok(res, { message: "Invitation rejected" });
 });
 
+app.post("/api/workspaces/join", auth, async (req, res) => {
+  const { workspaceId } = req.body;
+  if (!workspaceId) return fail(res, "Workspace ID is required");
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    
+    // Check if workspace exists
+    const { rows: wsRows } = await client.query("SELECT id FROM rooms WHERE id = $1", [workspaceId]);
+    if (!wsRows[0]) throw new Error("Workspace not found");
+
+    // Add user as member (EDITOR by default for now)
+    await client.query(
+      "INSERT INTO room_members (room_id, user_id, role) VALUES ($1, $2, 'EDITOR') ON CONFLICT DO NOTHING",
+      [workspaceId, req.user.sub]
+    );
+
+    await client.query("COMMIT");
+    ok(res, { message: "Joined workspace successfully", workspaceId });
+  } catch (err) {
+    await client.query("ROLLBACK");
+    fail(res, err.message);
+  } finally {
+    client.release();
+  }
+});
+
 app.post("/api/workspaces/request-access", auth, async (req, res) => {
   const { workspaceId, message } = req.body;
   await pool.query(`INSERT INTO workspace_join_requests (room_id, user_id, message) VALUES ($1, $2, $3) ON CONFLICT (room_id, user_id) DO UPDATE SET message = EXCLUDED.message, status = 'pending'`,

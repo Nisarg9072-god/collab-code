@@ -433,8 +433,22 @@ export default function WorkspaceDetail() {
                                 <Activity className="h-3 w-3 text-teal-500" />
                                 <span>{activeUserIds.length} Active</span>
                                 <span>•</span>
-                                <span className="font-mono">ID: {workspace.id.substring(0, 12)}…</span>
-                                <CopyButton text={workspace.id} label="Workspace ID" />
+                                <span className="font-mono">Invite ID: {workspace.id.substring(0, 12)}…</span>
+                                <CopyButton text={workspace.id} label="Invite ID" />
+                                <span>•</span>
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-7 gap-1.5 text-[10px] text-muted-foreground hover:text-teal-400"
+                                    onClick={() => {
+                                        const link = `${window.location.origin}/dashboard?join=${workspace.id}`;
+                                        navigator.clipboard.writeText(link);
+                                        toast({ title: "Link Copied!", description: "Invite link copied to clipboard." });
+                                    }}
+                                >
+                                    <Plus className="h-3 w-3" />
+                                    Copy Invite Link
+                                </Button>
                                 <span>•</span>
                                 <RoleBadge role={currentUserRole} />
                                 {sessionInfo?.hasSession && sessionInfo?.active && (

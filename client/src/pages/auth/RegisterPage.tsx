@@ -17,7 +17,6 @@ export default function RegisterPage() {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { login } = useAuth();
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -26,18 +25,11 @@ export default function RegisterPage() {
     try {
       await api.auth.register({ email, password, display_name: displayName || null });
       
-      const loginData = await api.auth.login({ email, password });
-      
-      localStorage.setItem("token", loginData.token);
-      const user = await api.auth.me();
-      login(loginData.token, user);
-      
       toast({
         title: "Account created!",
-        description: "Welcome to CollabCode.",
+        description: "Please sign in with your new account.",
       });
-      try { sessionStorage.removeItem("cc.demo"); localStorage.removeItem("demoMode"); } catch {}
-      navigate("/dashboard");
+      navigate("/login");
     } catch (err: any) {
       localStorage.removeItem("token");
       toast({

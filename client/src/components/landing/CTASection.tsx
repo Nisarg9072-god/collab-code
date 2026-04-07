@@ -15,9 +15,9 @@ const CTASection = () => {
           Secure, real-time collaboration for your next project.
         </p>
 
-        <Link to={user ? "/workspace" : "/login"}>
+        <Link to={user ? "/dashboard" : "/register"}>
           <Button size="lg" className="gap-2 text-base px-8">
-            Open Workspace
+            Get Started Now
             <ArrowRight className="h-4 w-4" />
           </Button>
         </Link>

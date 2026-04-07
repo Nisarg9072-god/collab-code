@@ -10,7 +10,6 @@ import Index from "./pages/Index";
 import LoginPage from "./pages/auth/LoginPage";
 import RegisterPage from "./pages/auth/RegisterPage";
 import WorkspaceDetail from "./pages/WorkspaceDetail";
-import WorkspaceEntry from "./pages/WorkspaceEntry";
 import WorkspaceEditor from "./pages/WorkspaceEditor";
 import Dashboard from "./pages/Dashboard";
 import ProfilePage from "./pages/ProfilePage";
@@ -71,11 +70,6 @@ const App = () => (
               <Route path="/profile" element={
                 <ProtectedRoute>
                   <ProfilePage />
-                </ProtectedRoute>
-              } />
-              <Route path="/workspace" element={
-                <ProtectedRoute>
-                  <WorkspaceEntry />
                 </ProtectedRoute>
               } />
               <Route path="/workspace/:id" element={

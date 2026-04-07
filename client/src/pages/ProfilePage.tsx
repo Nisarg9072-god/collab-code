@@ -2,13 +2,19 @@ import { useAuth } from "@/context/AuthContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/UI/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/UI/avatar";
 import { Button } from "@/components/UI/button";
-import { Calendar, Mail, User as UserIcon, Tag } from "lucide-react";
-import { AuthLayout } from "@/components/auth/AuthLayout";
+import { Calendar, Mail, User as UserIcon, Tag, LogOut, ArrowLeft } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 export default function ProfilePage() {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
 
   if (!user) return null;
+
+  const handleLogout = () => {
+    logout();
+    navigate("/login");
+  };
 
   const displayName = user.displayName || user.name;
   const memberSince = user.createdAt
@@ -66,17 +72,6 @@ export default function ProfilePage() {
                 </div>
               )}
 
-              {/* User ID */}
-              <div className="group flex items-center gap-4 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-teal-500/30 transition-colors">
-                <div className="p-2 rounded-md bg-teal-500/10 text-teal-500 group-hover:text-teal-400 transition-colors">
-                  <UserIcon className="h-5 w-5" />
-                </div>
-                <div className="flex-1">
-                  <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">User ID</p>
-                  <p className="text-sm font-medium font-mono truncate text-white/70" title={user.id}>{user.id}</p>
-                </div>
-              </div>
-
               {/* Member Since */}
               <div className="group flex items-center gap-4 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-teal-500/30 transition-colors">
                 <div className="p-2 rounded-md bg-teal-500/10 text-teal-500 group-hover:text-teal-400 transition-colors">
@@ -89,19 +84,26 @@ export default function ProfilePage() {
               </div>
             </div>
 
-            <Button
-              className="w-full bg-white/5 hover:bg-white/10 text-muted-foreground hover:text-white border border-white/10"
-              disabled
-            >
-              Edit Profile (Coming Soon)
-            </Button>
+            <div className="flex flex-col gap-3 pt-2">
+              <Button
+                variant="outline"
+                className="w-full bg-white/5 border-white/10 text-white hover:bg-white/10"
+                onClick={() => navigate("/dashboard")}
+              >
+                <ArrowLeft className="mr-2 h-4 w-4" />
+                Back to Dashboard
+              </Button>
+              <Button
+                variant="destructive"
+                className="w-full bg-red-500/10 text-red-500 border-red-500/20 hover:bg-red-500/20"
+                onClick={handleLogout}
+              >
+                <LogOut className="mr-2 h-4 w-4" />
+                Log Out
+              </Button>
+            </div>
           </CardContent>
         </Card>
-        <div className="mt-6 flex justify-center">
-          <Button onClick={() => (window.location.href = "/pricing")}>
-            Upgrade
-          </Button>
-        </div>
       </div>
     </div>
   );

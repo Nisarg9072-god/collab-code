@@ -33,9 +33,9 @@ const HeroSection = () => {
         </p>
 
         <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
-          <Link to={user ? "/workspace" : "/login"}>
+          <Link to={user ? "/dashboard" : "/register"}>
             <Button size="lg" className="gap-2 text-base px-8">
-              Open a Workspace
+              Get Started Free
               <ArrowRight className="h-4 w-4" />
             </Button>
           </Link>

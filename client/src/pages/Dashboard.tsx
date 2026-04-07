@@ -99,6 +99,16 @@ export default function Dashboard() {
   useEffect(() => {
     fetchWorkspaces();
     fetchInvitations();
+
+    // Check for join ID in URL
+    const params = new URLSearchParams(window.location.search);
+    const joinId = params.get("join");
+    if (joinId) {
+      setJoinWorkspaceId(joinId);
+      setJoinOpen(true);
+      // Clean up URL without refreshing
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
   }, [fetchWorkspaces, fetchInvitations]);
 
   // ── Handlers ─────────────────────────────────────────────────────────────
@@ -124,25 +134,19 @@ export default function Dashboard() {
     }
   };
 
-  const handleJoinRequest = async (e: React.FormEvent) => {
+  const handleJoinById = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!joinWorkspaceId.trim()) return;
     setJoining(true);
     try {
-      const result = await api.joinRequests.request(joinWorkspaceId.trim(), joinMessage.trim() || undefined);
-
-      if (result?.alreadyMember) {
-        toast({ title: "Already a member", description: "Navigating to workspace…" });
-        navigate(`/workspace/${joinWorkspaceId.trim()}`);
-      } else {
-        toast({ title: "Request Sent! 🎉", description: result?.message || "Your request has been sent to the workspace owner." });
-      }
+      await api.workspaces.join(joinWorkspaceId.trim());
+      toast({ title: "Success! 🎉", description: "You have joined the workspace." });
       setJoinOpen(false);
       setJoinWorkspaceId("");
-      setJoinMessage("");
-      if (result?.alreadyMember) fetchWorkspaces();
+      fetchWorkspaces();
+      navigate(`/workspace/${joinWorkspaceId.trim()}`);
     } catch (error: any) {
-      toast({ variant: "destructive", title: "Request Failed", description: error.message || "Failed to send join request" });
+      toast({ variant: "destructive", title: "Join Failed", description: error.message || "Invalid workspace ID" });
     } finally {
       setJoining(false);
     }
@@ -249,7 +253,7 @@ export default function Dashboard() {
               <div className="h-6 w-px bg-white/10" />
 
               <div className="flex items-center gap-3">
-                <div className="hidden md:block text-right">
+                <div className="hidden md:block text-right cursor-pointer" onClick={() => navigate("/profile")}>
                   <div className="flex items-center justify-end gap-2">
                     <p className="text-sm font-medium">{user?.displayName || user?.name || "User"}</p>
                     <Badge variant={user?.plan === 'PRO' ? 'default' : 'secondary'} className={user?.plan === 'PRO' ? 'bg-amber-500/20 text-amber-500 border-amber-500/30' : 'bg-muted/50 text-muted-foreground'}>
@@ -258,7 +262,7 @@ export default function Dashboard() {
                   </div>
                   <p className="text-xs text-muted-foreground">{user?.email}</p>
                 </div>
-                <Avatar className="h-9 w-9 border border-white/10 cursor-pointer" onClick={() => navigate("/pricing")}>
+                <Avatar className="h-9 w-9 border border-white/10 cursor-pointer" onClick={() => navigate("/profile")}>
                   <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${user?.email}`} />
                   <AvatarFallback className="bg-primary/20 text-primary text-xs">
                     {user?.email?.substring(0, 2).toUpperCase()}
@@ -353,9 +357,9 @@ export default function Dashboard() {
                     </DialogTrigger>
                     <DialogContent className="bg-background/95 backdrop-blur-2xl border-border">
                       <DialogHeader>
-                        <DialogTitle>Request Access to Workspace</DialogTitle>
+                        <DialogTitle>Join Workspace</DialogTitle>
                       </DialogHeader>
-                      <form onSubmit={handleJoinRequest} className="space-y-4 py-4">
+                      <form onSubmit={handleJoinById} className="space-y-4 py-4">
                         <div className="space-y-2">
                           <label className="text-sm font-medium">Workspace ID</label>
                           <Input
@@ -366,19 +370,9 @@ export default function Dashboard() {
                           />
                           <p className="text-xs text-muted-foreground">You can find the ID in the workspace header or settings tab.</p>
                         </div>
-                        <div className="space-y-2">
-                          <label className="text-sm font-medium">Message (optional)</label>
-                          <Textarea
-                            placeholder="Hi, I'd like to collaborate on…"
-                            value={joinMessage}
-                            onChange={e => setJoinMessage(e.target.value)}
-                            rows={3}
-                            className="resize-none"
-                          />
-                        </div>
-                        <Button type="submit" className="w-full" disabled={joining}>
+                        <Button type="submit" className="w-full bg-teal-500 hover:bg-teal-600 text-white" disabled={joining}>
                           {joining ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <DoorOpen className="mr-2 h-4 w-4" />}
-                          Send Access Request
+                          Join Workspace
                         </Button>
                       </form>
                     </DialogContent>

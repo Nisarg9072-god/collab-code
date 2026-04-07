@@ -4,7 +4,7 @@ import { useParams } from "react-router-dom";
 import { formatDistanceToNow } from "date-fns";
 import { api } from "@/lib/api";
 import { toast } from "@/hooks/use-toast";
-import { useAuth } from "@/features/auth/hooks/useAuth";
+import { useAuth } from "@/context/AuthContext";
 import { useCollaborationSession } from "@/hooks/useCollaborationSession";
 
 // IDE Components

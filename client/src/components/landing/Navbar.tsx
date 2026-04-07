@@ -61,14 +61,6 @@ const Navbar = () => {
             >
               Pricing
             </Link>
-            {user && (
-              <Link
-                to="/workspace"
-                className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-              >
-                Workspace
-              </Link>
-            )}
           </div>
 
           <div className="flex items-center gap-4">
@@ -96,7 +88,7 @@ const Navbar = () => {
                 <DropdownMenuContent className="w-56" align="end" forceMount>
                   <DropdownMenuLabel className="font-normal">
                     <div className="flex flex-col space-y-1">
-                      <p className="text-sm font-medium leading-none">{user.name || "User"}</p>
+                      <p className="text-sm font-medium leading-none">{user.displayName || user.name || "User"}</p>
                       <p className="text-xs leading-none text-muted-foreground">
                         {user.email}
                       </p>
@@ -107,9 +99,9 @@ const Navbar = () => {
                     <LayoutDashboard className="mr-2 h-4 w-4" />
                     <span>Dashboard</span>
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => navigate("/workspace")}>
+                  <DropdownMenuItem onClick={() => navigate("/profile")}>
                     <User className="mr-2 h-4 w-4" />
-                    <span>Workspace</span>
+                    <span>Profile</span>
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={handleLogout} className="text-red-500 focus:text-red-500">
